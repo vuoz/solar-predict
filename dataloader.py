@@ -1,9 +1,14 @@
 import os; import matplotlib.pyplot as plt;
 import polars as pl;
+from polars.dependencies import dataclasses
+import requests;
 from dataclasses import dataclass;
 from datetime import datetime;
 
-
+@dataclass
+class Coordinates():
+    latitude: float
+    longitude: float
 
 @dataclass
 class SenecExportType():
@@ -37,8 +42,9 @@ def parse_senec_export_type(line: str)-> tuple[SenecExportType|None,Exception|No
     return (SenecExportType(time,gridexport,usage,acculevel,accudischarge,production,accuvoltage,accucurrent),None)
    
 class Dataloader():
-    def __init__(self, path):
+    def __init__(self, path,coordinates:Coordinates):
         self.path = path
+        self.coords = coordinates
 
     def get_data_files(self):
         csv_files = [] 
@@ -94,6 +100,22 @@ class Dataloader():
         # then aggreagte the date into an pickle file to store for later use
 
         
+    def get_weather_for_date(self,date_start:str,date_end: str)-> tuple[int|None,Exception|None]:  
+        url = "https://archive-api.open-meteo.com/v1/archive";
+        params = {
+            "latitude": self.coords.latitude,
+	        "longitude":self.coords.longitude,
+	        "start_date": date_start,
+	        "end_date": date_end,
+	        "hourly": "temperature_2m",
+        }
+        resp =requests.get(url,params=params)
+        if resp.status_code != 200:
+            return (None,Exception(f"Failed to get weather data for window {date_start}-{date_end}, error: {resp.status_code}"))
+        #...
+        return (0,None)
+
+
     # currently just for testing purposes; to be able to understand the data
     def visualize(self):
 
@@ -141,11 +163,10 @@ class Dataloader():
 
         csv_files = self.get_data_files()
         read_csv_and_display_daily_data(csv_files[0])
-
         
 
 
 
             
-DataLoader = Dataloader("data")
+DataLoader = Dataloader("data",Coordinates(0.0,0.0))
 DataLoader.visualize()
