@@ -40,15 +40,63 @@ class Dataloader():
     def __init__(self, path):
         self.path = path
 
+    def get_data_files(self):
+        csv_files = [] 
+        for file in os.listdir(self.path):
+            if file.endswith(".csv"):
+                csv_files.append(self.path+"/"+file)
+        return csv_files
+        
     def load(self):
         
-        def get_data_files(path):
-            csv_files = [] 
-            for file in os.listdir(self.path):
-                if file.endswith(".csv"):
-                    csv_files.append(self.path+"/"+file)
-            return csv_files
+
+        def read_csv(file_name:str)-> tuple[list[pl.DataFrame]|None,Exception|None]:
+            df = pl.read_csv(file_name,separator=";")
+            df = df.with_columns(
+                    pl.col(col).str.replace(",", ".").cast(pl.Float64) for col in df.columns[1:] 
+            )
+            
+            df = df.with_columns(
+                pl.col("Uhrzeit").str.to_datetime().alias("Timestamp")
+            )
+
+            df = df.with_columns(
+                pl.col("Timestamp").dt.date().alias("Date")
+            )
+            df = df.with_columns(
+                (pl.col("Stromerzeugung [kW]") * 0.0833).alias("Energy [kWh]")
+            )   
+
+            dfs_per_day = [df.filter(pl.col("Date") == date) for date in df.select(pl.col("Date")).unique().to_series()]
+            sanitized_dfs = []
+            for df in dfs_per_day:
+                if len(df.rows()) < 270:
+                    continue
+                sanitized_dfs.append(df)
+            return (sanitized_dfs,None)
+
+
+
+        csv_files = self.get_data_files()
+        data_days = []
+        for file in csv_files:
+            (files,err)= read_csv(file)
+            if err != None:
+                continue
+            if files == None:
+                continue
+            # can be made faster
+            for file in files:
+                data_days.append(file)
+
+        print(len(data_days))
+
+        # then aggreagte the date into an pickle file to store for later use
+
         
+    # currently just for testing purposes; to be able to understand the data
+    def visualize(self):
+
         def read_csv_and_display_daily_data(file_name : str):
             df = pl.read_csv(file_name,separator=";")
             df = df.with_columns(
@@ -62,16 +110,24 @@ class Dataloader():
             df = df.with_columns(
                 pl.col("Timestamp").dt.date().alias("Date")
             )
-            
+            df = df.with_columns(
+                (pl.col("Stromerzeugung [kW]") * 0.0833).alias("Energy [kWh]")
+            )   
 
             dfs_per_day = [df.filter(pl.col("Date") == date) for date in df.select(pl.col("Date")).unique().to_series()]
-            print(len(dfs_per_day))
-            
+            sanitized_dfs = []
+            for df in dfs_per_day:
+                if len(df.rows()) < 270:
+                    continue
+                sanitized_dfs.append(df)
 
-            example_date_df = dfs_per_day[0]
+            example_date_df = sanitized_dfs[5]
+            example_date_df.select("Stromerzeugung [kW]")
+            total_energy = example_date_df["Energy [kWh]"].sum()
+            print(total_energy)
             
             df_pandas = example_date_df.to_pandas()
-            plt.figure(figsize=(10, 6))
+            plt.figure(figsize=(5, 3))
             plt.scatter(df_pandas['Timestamp'], df_pandas['Stromerzeugung [kW]'], color='blue')
             plt.xlabel('Time')
             plt.ylabel('Electricity Production [kW]')
@@ -83,9 +139,8 @@ class Dataloader():
             
 
 
-        csv_files = get_data_files(self.path)
+        csv_files = self.get_data_files()
         read_csv_and_display_daily_data(csv_files[0])
-        
 
         
 
@@ -93,4 +148,4 @@ class Dataloader():
 
             
 DataLoader = Dataloader("data")
-DataLoader.load()
+DataLoader.visualize()
