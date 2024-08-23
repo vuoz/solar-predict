@@ -16,7 +16,7 @@ class ObtainData():
         self.session = requests.Session()
         return
     
-         
+    # login to the senec site using email and pass 
     def login(self) -> Exception|None:
         url = "https://mein-senec.de/auth/login"
         headers = {"Content-Type":"application/x-www-form-urlencoded",
@@ -29,6 +29,7 @@ class ObtainData():
         return None
 
 
+    # get all of the file names/parameters (that can be used to construct the dl link) corresponding to the statistical data file names that senec provides for your solar system
     def get_all_file_names(self)->tuple[DocumentList| None,Exception|None]:
         url = "https://mein-senec.de/endkunde/api/statistischeDaten/getKalenderWochen?anlageNummer=0"
         headers= {"Referer":"https://mein-senec.de/endkunde/",
@@ -44,7 +45,7 @@ class ObtainData():
         document_list = [DocumentDesciption(**doc) for doc in parsed_data]
 
         return (DocumentList(docs=document_list),None)
-    
+
     def get_files_contents(self,kw:str,year:str)->tuple[str|None,Exception|None]:
         headers= {"Referer":"https://mein-senec.de/endkunde/",
                   "Origin":"https://mein-senec.de",
@@ -85,5 +86,5 @@ class ObtainData():
 
 
 dotenv.load_dotenv()
-data_getter =ObtainData(os.environ["Senec_Email"],os.environ["Senec_Pass"])
+data_getter = ObtainData(os.environ["Senec_Email"],os.environ["Senec_Pass"])
 data_getter.flow()
