@@ -1,4 +1,5 @@
 import os;
+import dill as pickle;
 import matplotlib.pyplot as plt;
 import polars as pl;
 import json;
@@ -32,44 +33,31 @@ class DataframeWithWeather():
     weather: WeatherData
 
  
-def parse_senec_export_type(line: str)-> tuple[SenecExportType|None,Exception|None]:
-    date_format = "%d.%m.%Y %H:%M:%S"   
-
-    splits = line.split(";")
-    if len(splits) != 7:
-        return (None, Exception(f"Invalid line: {line}"))
-    date_string  = splits[0]
-    time = datetime.strptime(date_string, date_format)
-    gridexport = float(splits[1])
-    usage = float(splits[2])
-    acculevel = float(splits[3])
-    accudischarge = float(splits[4])
-    production = float(splits[5])
-    accuvoltage = float(splits[6])
-    accucurrent = float(splits[7])
-    return (SenecExportType(time,gridexport,usage,acculevel,accudischarge,production,accuvoltage,accucurrent),None)
-   
+  
 class Dataloader():
     def __init__(self, path,coordinates:Coordinates):
         self.path = path
         self.coords = coordinates
 
-    def get_data_files(self):
+    def get_data_files(self)->list[str]:
         csv_files = [] 
         for file in os.listdir(self.path):
             if file.endswith(".csv"):
                 csv_files.append(self.path+"/"+file)
         return csv_files
-        
     def load(self):
+        with open("training_data.pkl", 'rb') as f:
+            loaded_dataframes_with_weather = pickle.load(f)
+        for df_with_weather in loaded_dataframes_with_weather:
+            print(df_with_weather.weather.daily.sunrise)
+        pass
+    def prepare_and_save(self):
         
-
         def read_csv(file_name:str)-> tuple[list[DataframeWithWeather]|None,Exception|None]:
-            df = pl.read_csv(file_name,separator=";")
+            df = pl.read_csv(file_name,separator=";",ignore_errors=True)
             df = df.with_columns(
                     pl.col(col).str.replace(",", ".").cast(pl.Float64) for col in df.columns[1:] 
             )
-            
             df = df.with_columns(
                 pl.col("Uhrzeit").str.to_datetime().alias("Timestamp")
             )
@@ -85,7 +73,7 @@ class Dataloader():
             sanitized_dfs:list[DataframeWithWeather] = []
             for df in dfs_per_day:
                 #one day should ideally have 288 data points.
-                # every day under 270 data points in disregarded
+                # every day under 270 data points is disregarded
                 if len(df.rows()) < 270:
                     continue
              
@@ -103,18 +91,21 @@ class Dataloader():
 
 
         csv_files = self.get_data_files()
-        data_days = []
+        data_days:list[DataframeWithWeather] = []
         for file in csv_files:
-            (files,err)= read_csv(file)
+            print(f"Processing file {file}")
+            (days,err)= read_csv(file)
             if err != None:
                 continue
-            if files == None:
+            if days == None:
                 continue
-            # can be made faster
-            for file in files:
-                data_days.append(file)
+            # can be made much faster
+            for day in days:
+                data_days.append(day)
 
-        print(len(data_days))
+        with open("training_data.pkl","wb") as file:
+            pickle.dump(data_days,file)
+
 
         # then aggreagte the date into an pickle file to store for later use
 
@@ -191,11 +182,11 @@ class Dataloader():
 
 
         csv_files = self.get_data_files()
-        read_csv_and_display_daily_data(csv_files[0])
+        read_csv_and_display_daily_data(csv_files[1])
         
 
 
 
 dotenv.load_dotenv()
 DataLoader = Dataloader("data",Coordinates(float(os.environ["Long"]),float(os.environ["Lat"])))
-DataLoader.visualize()
+DataLoader.load()
