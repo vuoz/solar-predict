@@ -1,5 +1,9 @@
 from dataclasses import dataclass
 from typing import List
+from collections import namedtuple
+
+def customWeatherDecoder(weatherDict):
+    return namedtuple('X', weatherDict.keys())(*weatherDict.values())
 
 @dataclass
 class HourlyUnits:

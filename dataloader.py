@@ -8,6 +8,7 @@ from dataclasses import dataclass;
 from datetime import datetime;
 from customTypes import WeatherData;
 import dotenv;
+from customTypes import customWeatherDecoder;
 
 @dataclass
 class Coordinates():
@@ -133,10 +134,8 @@ class Dataloader():
         resp =requests.get(url,params=params)
         if resp.status_code != 200:
             return (None,Exception(f"Failed to get weather data for window {date_start}-{date_end}, error: {resp.status_code}"))
-        #...
-        weather_data  = json.loads(resp.text, object_hook=lambda d: WeatherData(**d))
-
-        return (weather_data,None)
+        weather = json.loads(resp.text, object_hook=customWeatherDecoder) 
+        return (weather,None)
 
 
     # currently just for testing purposes; to be able to understand the data
@@ -174,7 +173,7 @@ class Dataloader():
                 sanitized_dfs.append(DataframeWithWeather(df=df,weather=weather))
 
             example_date_df = sanitized_dfs[5]
-            print(example_date_df.weather)
+            print(example_date_df.weather.daily.sunrise)
             example_date_df.df.select("Stromerzeugung [kW]")
             total_energy = example_date_df.df["Energy [kWh]"].sum()
             print(total_energy)
