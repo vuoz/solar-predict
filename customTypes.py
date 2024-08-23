@@ -49,3 +49,16 @@ class WeatherData:
     daily_units: DailyUnits
     daily: Daily
 
+
+
+@dataclass
+class DocumentDesciption():
+    kalenderwoche: int
+    jahr: int
+    starttag: int
+    endtag: int
+    
+@dataclass
+class DocumentList:
+    docs:list[DocumentDesciption]
+
