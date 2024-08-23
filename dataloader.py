@@ -1,9 +1,13 @@
-import os; import matplotlib.pyplot as plt;
+from json.decoder import JSONDecoder
+import os;
+import matplotlib.pyplot as plt;
 import polars as pl;
-from polars.dependencies import dataclasses
+import json;
 import requests;
 from dataclasses import dataclass;
 from datetime import datetime;
+from customTypes import WeatherData;
+import dotenv;
 
 @dataclass
 class Coordinates():
@@ -22,6 +26,10 @@ class SenecExportType():
     accucurrent:float
 
 
+@dataclass
+class DataframeWithWeather():
+    df: pl.DataFrame
+    weather: WeatherData
 
  
 def parse_senec_export_type(line: str)-> tuple[SenecExportType|None,Exception|None]:
@@ -56,7 +64,7 @@ class Dataloader():
     def load(self):
         
 
-        def read_csv(file_name:str)-> tuple[list[pl.DataFrame]|None,Exception|None]:
+        def read_csv(file_name:str)-> tuple[list[DataframeWithWeather]|None,Exception|None]:
             df = pl.read_csv(file_name,separator=";")
             df = df.with_columns(
                     pl.col(col).str.replace(",", ".").cast(pl.Float64) for col in df.columns[1:] 
@@ -74,11 +82,22 @@ class Dataloader():
             )   
 
             dfs_per_day = [df.filter(pl.col("Date") == date) for date in df.select(pl.col("Date")).unique().to_series()]
-            sanitized_dfs = []
+            sanitized_dfs:list[DataframeWithWeather] = []
             for df in dfs_per_day:
+                #one day should ideally have 288 data points.
+                # every day under 270 data points in disregarded
                 if len(df.rows()) < 270:
                     continue
-                sanitized_dfs.append(df)
+             
+                date = df.get_column("Date")[0]
+                #match solar system data with weather data for day
+                # currently we get data for each day individually, but the the future you could do batching
+                (weather,err) = self.get_weather_for_date(date,date)
+                if err != None:
+                    continue
+                if weather == None:
+                    continue
+                sanitized_dfs.append(DataframeWithWeather(df=df,weather=weather))
             return (sanitized_dfs,None)
 
 
@@ -100,20 +119,24 @@ class Dataloader():
         # then aggreagte the date into an pickle file to store for later use
 
         
-    def get_weather_for_date(self,date_start:str,date_end: str)-> tuple[int|None,Exception|None]:  
+    def get_weather_for_date(self,date_start:str,date_end: str)-> tuple[WeatherData|None,Exception|None]:  
         url = "https://archive-api.open-meteo.com/v1/archive";
         params = {
-            "latitude": self.coords.latitude,
-	        "longitude":self.coords.longitude,
+	        "latitude": self.coords.latitude,
+	        "longitude": self.coords.longitude,
 	        "start_date": date_start,
 	        "end_date": date_end,
-	        "hourly": "temperature_2m",
+	        "hourly": ["temperature_2m", "precipitation", "cloud_cover", "sunshine_duration"],
+	        "daily": ["sunrise", "sunset", "sunshine_duration"],
+	        "timezone": "Europe/Berlin"
         }
         resp =requests.get(url,params=params)
         if resp.status_code != 200:
             return (None,Exception(f"Failed to get weather data for window {date_start}-{date_end}, error: {resp.status_code}"))
         #...
-        return (0,None)
+        weather_data  = json.loads(resp.text, object_hook=lambda d: WeatherData(**d))
+
+        return (weather_data,None)
 
 
     # currently just for testing purposes; to be able to understand the data
@@ -137,18 +160,26 @@ class Dataloader():
             )   
 
             dfs_per_day = [df.filter(pl.col("Date") == date) for date in df.select(pl.col("Date")).unique().to_series()]
-            sanitized_dfs = []
+            sanitized_dfs:list[DataframeWithWeather] = []
             for df in dfs_per_day:
                 if len(df.rows()) < 270:
                     continue
-                sanitized_dfs.append(df)
+                date = df.get_column("Date")[0]
+                (weather,err) = self.get_weather_for_date(date,date)
+                if err != None:
+                    print(err)
+                if weather == None:
+                    print("weather is none")
+                    continue
+                sanitized_dfs.append(DataframeWithWeather(df=df,weather=weather))
 
             example_date_df = sanitized_dfs[5]
-            example_date_df.select("Stromerzeugung [kW]")
-            total_energy = example_date_df["Energy [kWh]"].sum()
+            print(example_date_df.weather)
+            example_date_df.df.select("Stromerzeugung [kW]")
+            total_energy = example_date_df.df["Energy [kWh]"].sum()
             print(total_energy)
             
-            df_pandas = example_date_df.to_pandas()
+            df_pandas = example_date_df.df.to_pandas()
             plt.figure(figsize=(5, 3))
             plt.scatter(df_pandas['Timestamp'], df_pandas['Stromerzeugung [kW]'], color='blue')
             plt.xlabel('Time')
@@ -167,6 +198,6 @@ class Dataloader():
 
 
 
-            
-DataLoader = Dataloader("data",Coordinates(0.0,0.0))
+dotenv.load_dotenv()
+DataLoader = Dataloader("data",Coordinates(float(os.environ["Long"]),float(os.environ["Lat"])))
 DataLoader.visualize()
