@@ -2,13 +2,11 @@ import os;
 import dill as pickle;
 import matplotlib.pyplot as plt;
 import polars as pl;
-import json;
 import requests;
 from dataclasses import dataclass;
 from datetime import datetime;
 from customTypes import WeatherData;
 import dotenv;
-from customTypes import customWeatherDecoder;
 
 @dataclass
 class Coordinates():
@@ -32,6 +30,12 @@ class DataframeWithWeather():
     df: pl.DataFrame
     weather: WeatherData
 
+@dataclass
+class DataframeWithWeatherAsDict():
+    df: pl.DataFrame
+    weather: dict
+
+
  
   
 class Dataloader():
@@ -48,12 +52,16 @@ class Dataloader():
     def load(self):
         with open("training_data.pkl", 'rb') as f:
             loaded_dataframes_with_weather = pickle.load(f)
-        for df_with_weather in loaded_dataframes_with_weather:
-            print(df_with_weather.weather.daily.sunrise)
+        data_types:list[DataframeWithWeatherAsDict] = []
+        for day in loaded_dataframes_with_weather:
+            df = pl.DataFrame(day.df)
+            data_types.append(DataframeWithWeatherAsDict(df,day.weather))
+        print(len(data_types))
+
         pass
     def prepare_and_save(self):
         
-        def read_csv(file_name:str)-> tuple[list[DataframeWithWeather]|None,Exception|None]:
+        def read_csv(file_name:str)-> tuple[list[DataframeWithWeatherAsDict]|None,Exception|None]:
             df = pl.read_csv(file_name,separator=";",ignore_errors=True)
             df = df.with_columns(
                     pl.col(col).str.replace(",", ".").cast(pl.Float64) for col in df.columns[1:] 
@@ -70,7 +78,7 @@ class Dataloader():
             )   
 
             dfs_per_day = [df.filter(pl.col("Date") == date) for date in df.select(pl.col("Date")).unique().to_series()]
-            sanitized_dfs:list[DataframeWithWeather] = []
+            sanitized_dfs:list[DataframeWithWeatherAsDict] = []
             for df in dfs_per_day:
                 #one day should ideally have 288 data points.
                 # every day under 270 data points is disregarded
@@ -85,13 +93,13 @@ class Dataloader():
                     continue
                 if weather == None:
                     continue
-                sanitized_dfs.append(DataframeWithWeather(df=df,weather=weather))
+                sanitized_dfs.append(DataframeWithWeatherAsDict(df=df,weather=weather))
             return (sanitized_dfs,None)
 
 
 
         csv_files = self.get_data_files()
-        data_days:list[DataframeWithWeather] = []
+        data_days:list[DataframeWithWeatherAsDict] = []
         for file in csv_files:
             print(f"Processing file {file}")
             (days,err)= read_csv(file)
@@ -110,7 +118,7 @@ class Dataloader():
         # then aggreagte the date into an pickle file to store for later use
 
         
-    def get_weather_for_date(self,date_start:str,date_end: str)-> tuple[WeatherData|None,Exception|None]:  
+    def get_weather_for_date(self,date_start:str,date_end: str)-> tuple[dict[str,str]|None,Exception|None]:  
         url = "https://archive-api.open-meteo.com/v1/archive";
         params = {
 	        "latitude": self.coords.latitude,
@@ -124,8 +132,7 @@ class Dataloader():
         resp =requests.get(url,params=params)
         if resp.status_code != 200:
             return (None,Exception(f"Failed to get weather data for window {date_start}-{date_end}, error: {resp.status_code}"))
-        weather = json.loads(resp.text, object_hook=customWeatherDecoder) 
-        return (weather,None)
+        return (resp.json(),None)
 
 
     # currently just for testing purposes; to be able to understand the data
@@ -149,7 +156,7 @@ class Dataloader():
             )   
 
             dfs_per_day = [df.filter(pl.col("Date") == date) for date in df.select(pl.col("Date")).unique().to_series()]
-            sanitized_dfs:list[DataframeWithWeather] = []
+            sanitized_dfs:list[DataframeWithWeatherAsDict] = []
             for df in dfs_per_day:
                 if len(df.rows()) < 270:
                     continue
@@ -160,10 +167,10 @@ class Dataloader():
                 if weather == None:
                     print("weather is none")
                     continue
-                sanitized_dfs.append(DataframeWithWeather(df=df,weather=weather))
+                sanitized_dfs.append(DataframeWithWeatherAsDict(df=df,weather=weather))
 
             example_date_df = sanitized_dfs[5]
-            print(example_date_df.weather.daily.sunrise)
+            print(example_date_df.weather["daily"].sunrise)
             example_date_df.df.select("Stromerzeugung [kW]")
             total_energy = example_date_df.df["Energy [kWh]"].sum()
             print(total_energy)
