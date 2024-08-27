@@ -4,7 +4,9 @@ import matplotlib.pyplot as plt;
 import polars as pl;
 import requests;
 from dataclasses import dataclass;
-from datetime import datetime;
+from datetime import datetime
+import torch;
+from torch import Tensor;
 from customTypes import WeatherData;
 import dotenv;
 
@@ -34,6 +36,21 @@ class DataframeWithWeather():
 class DataframeWithWeatherAsDict():
     df: pl.DataFrame
     weather: dict
+    def wether_to_feature_vec(self)->Tensor:
+        return torch.Tensor([])
+
+    def df_to_lable(self)-> Tensor:
+        values = self.df.get_column("Stromerzeugung [kW]")
+
+        tensor = values.to_torch()
+        # noramlize the size of the tensor
+        if tensor.shape[0] != 288:
+            tensor = tensor.unsqueeze(0).unsqueeze(0)
+            new_tensor = torch.nn.functional.interpolate(tensor, size=(288),mode="linear",align_corners=False)
+            tensor_interpolated = new_tensor.squeeze(0).squeeze(0)
+            return tensor_interpolated
+        return tensor
+
 
 
  
@@ -49,16 +66,14 @@ class Dataloader():
             if file.endswith(".csv"):
                 csv_files.append(self.path+"/"+file)
         return csv_files
-    def load(self):
+    def load(self)->list[DataframeWithWeatherAsDict]:
         with open("training_data.pkl", 'rb') as f:
             loaded_dataframes_with_weather = pickle.load(f)
         data_types:list[DataframeWithWeatherAsDict] = []
         for day in loaded_dataframes_with_weather:
             df = pl.DataFrame(day.df)
             data_types.append(DataframeWithWeatherAsDict(df,day.weather))
-        print(len(data_types))
-
-        pass
+        return data_types
     def prepare_and_save(self):
         
         def read_csv(file_name:str)-> tuple[list[DataframeWithWeatherAsDict]|None,Exception|None]:
@@ -196,4 +211,4 @@ class Dataloader():
 
 dotenv.load_dotenv()
 DataLoader = Dataloader("data",Coordinates(float(os.environ["Long"]),float(os.environ["Lat"])))
-DataLoader.load()
+DataLoader.prepare_and_save()
