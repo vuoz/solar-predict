@@ -20,3 +20,8 @@ python dataloader.py
 ```python
 python train.py
 ```
+ 
+### Use the model for inference
+```python
+python inference.py
+```

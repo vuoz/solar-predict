@@ -37,7 +37,18 @@ class DataframeWithWeatherAsDict():
     df: pl.DataFrame
     weather: dict
     def wether_to_feature_vec(self)->Tensor:
-        return torch.Tensor([])
+        weather_dict = []
+
+        date_object = datetime.strptime(self.weather["daily"]["time"][0], "%Y-%m-%d")
+        day_of_year = date_object.timetuple().tm_yday
+        hour = self.weather["hourly"]
+        for i in range(0,24):
+            temp_2m = hour["temperature_2m"][i]
+            percipitation = hour["precipitation"][i]
+            cloud_cover = hour["cloud_cover"][i]
+            sunshine_duration = hour["sunshine_duration"][i]
+            weather_dict.append([day_of_year,float(temp_2m),float(percipitation),float(cloud_cover),float(sunshine_duration)])
+        return torch.Tensor(weather_dict)
 
     def df_to_lable(self)-> Tensor:
         values = self.df.get_column("Stromerzeugung [kW]")
@@ -74,50 +85,45 @@ class Dataloader():
             df = pl.DataFrame(day.df)
             data_types.append(DataframeWithWeatherAsDict(df,day.weather))
         return data_types
+    def read_csv(self,file_name:str)-> tuple[list[DataframeWithWeatherAsDict]|None,Exception|None]:
+        df = pl.read_csv(file_name,separator=";",ignore_errors=True)
+        df = df.with_columns(
+                pl.col(col).str.replace(",", ".").cast(pl.Float64) for col in df.columns[1:] 
+        )
+        df = df.with_columns(
+            pl.col("Uhrzeit").str.to_datetime().alias("Timestamp")
+        )
+
+        df = df.with_columns(
+            pl.col("Timestamp").dt.date().alias("Date")
+        )
+        df = df.with_columns(
+            (pl.col("Stromerzeugung [kW]") * 0.0833).alias("Energy [kWh]")
+        )   
+        dfs_per_day = [df.filter(pl.col("Date") == date) for date in df.select(pl.col("Date")).unique().to_series()]
+        sanitized_dfs:list[DataframeWithWeatherAsDict] = []
+        for df in dfs_per_day:
+            #one day should ideally have 288 data points.
+            # every day under 270 data points is disregarded
+            if len(df.rows()) < 280:
+                continue
+            
+            date = df.get_column("Date")[0]
+            #match solar system data with weather data for day
+            # currently we get data for each day individually, but the the future you could do batching
+            (weather,err) = self.get_weather_for_date(date,date)
+            if err != None:
+                continue
+            if weather == None:
+                continue
+            sanitized_dfs.append(DataframeWithWeatherAsDict(df=df,weather=weather))
+        return (sanitized_dfs,None)
     def prepare_and_save(self):
-        
-        def read_csv(file_name:str)-> tuple[list[DataframeWithWeatherAsDict]|None,Exception|None]:
-            df = pl.read_csv(file_name,separator=";",ignore_errors=True)
-            df = df.with_columns(
-                    pl.col(col).str.replace(",", ".").cast(pl.Float64) for col in df.columns[1:] 
-            )
-            df = df.with_columns(
-                pl.col("Uhrzeit").str.to_datetime().alias("Timestamp")
-            )
-
-            df = df.with_columns(
-                pl.col("Timestamp").dt.date().alias("Date")
-            )
-            df = df.with_columns(
-                (pl.col("Stromerzeugung [kW]") * 0.0833).alias("Energy [kWh]")
-            )   
-
-            dfs_per_day = [df.filter(pl.col("Date") == date) for date in df.select(pl.col("Date")).unique().to_series()]
-            sanitized_dfs:list[DataframeWithWeatherAsDict] = []
-            for df in dfs_per_day:
-                #one day should ideally have 288 data points.
-                # every day under 270 data points is disregarded
-                if len(df.rows()) < 270:
-                    continue
-             
-                date = df.get_column("Date")[0]
-                #match solar system data with weather data for day
-                # currently we get data for each day individually, but the the future you could do batching
-                (weather,err) = self.get_weather_for_date(date,date)
-                if err != None:
-                    continue
-                if weather == None:
-                    continue
-                sanitized_dfs.append(DataframeWithWeatherAsDict(df=df,weather=weather))
-            return (sanitized_dfs,None)
-
-
-
         csv_files = self.get_data_files()
         data_days:list[DataframeWithWeatherAsDict] = []
         for file in csv_files:
             print(f"Processing file {file}")
-            (days,err)= read_csv(file)
+            (days,err)= self.read_csv(file)
             if err != None:
                 continue
             if days == None:
@@ -126,11 +132,12 @@ class Dataloader():
             for day in days:
                 data_days.append(day)
 
+
+        # then aggreagte the date into an pickle file to store for later use
         with open("training_data.pkl","wb") as file:
             pickle.dump(data_days,file)
 
 
-        # then aggreagte the date into an pickle file to store for later use
 
         
     def get_weather_for_date(self,date_start:str,date_end: str)-> tuple[dict[str,str]|None,Exception|None]:  
@@ -150,7 +157,6 @@ class Dataloader():
         return (resp.json(),None)
 
 
-    # currently just for testing purposes; to be able to understand the data
     def visualize(self):
 
         def read_csv_and_display_daily_data(file_name : str):
@@ -207,8 +213,7 @@ class Dataloader():
         read_csv_and_display_daily_data(csv_files[1])
         
 
-
-
-dotenv.load_dotenv()
-DataLoader = Dataloader("data",Coordinates(float(os.environ["Long"]),float(os.environ["Lat"])))
-DataLoader.prepare_and_save()
+if __name__ == "__main__":
+    dotenv.load_dotenv()
+    DataLoader = Dataloader("data",Coordinates(float(os.environ["Long"]),float(os.environ["Lat"])))
+    DataLoader.prepare_and_save()

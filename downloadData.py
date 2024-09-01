@@ -84,7 +84,7 @@ class ObtainData():
 
 
 
-
-dotenv.load_dotenv()
-data_getter = ObtainData(os.environ["Senec_Email"],os.environ["Senec_Pass"])
-data_getter.flow()
+if __name__ == "__main__":
+    dotenv.load_dotenv()
+    data_getter = ObtainData(os.environ["Senec_Email"],os.environ["Senec_Pass"])
+    data_getter.flow()
