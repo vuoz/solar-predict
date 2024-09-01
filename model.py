@@ -24,6 +24,9 @@ class Model(nn.Module):
         
         self.fc7 = nn.Linear(512, 512)
         self.relu7 = nn.ReLU()
+
+        self.fc7_2 = nn.Linear(512, 512)
+        self.relu7_2 = nn.ReLU()
         
         self.fc8 = nn.Linear(512, 256)
         self.relu8 = nn.ReLU()
@@ -50,6 +53,8 @@ class Model(nn.Module):
         x = self.relu6(x)
         x = self.fc7(x)
         x = self.relu7(x)
+        x = self.fc7_2(x)
+        x = self.relu7_2(x)
         x = self.fc8(x)
         x = self.relu8(x)
         x = self.fc9(x)

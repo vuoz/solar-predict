@@ -62,5 +62,5 @@ if __name__ == "__main__":
     data = Dataloader("/data",Coordinates(float(os.environ["Lat"]),float(os.environ["Long"]))).load()
     model = Model(24*5)
     model.to(device)
-    model = train(model,device,data,epochs=100,lr=0.0001)
+    model = train(model,device,data,epochs=150,lr=0.0001)
     torch.save(model.state_dict(), "model.pth")

@@ -116,8 +116,16 @@ class Dataloader():
                 continue
             if weather == None:
                 continue
-            sanitized_dfs.append(DataframeWithWeatherAsDict(df=df,weather=weather))
+            df_smoothed = self.smooth_graph(df)
+            sanitized_dfs.append(DataframeWithWeatherAsDict(df=df_smoothed,weather=weather))
         return (sanitized_dfs,None)
+
+    def smooth_graph(self,df :pl.DataFrame)->pl.DataFrame:
+        df_moving_mean = df.with_columns(
+            pl.col("Stromerzeugung [kW]").rolling_mean(window_size=12).alias("Stromerzeugung smoothed")
+        )
+        return  df_moving_mean
+
     def prepare_and_save(self):
         csv_files = self.get_data_files()
         data_days:list[DataframeWithWeatherAsDict] = []
@@ -160,7 +168,7 @@ class Dataloader():
     def visualize(self):
 
         def read_csv_and_display_daily_data(file_name : str):
-            df = pl.read_csv(file_name,separator=";")
+            df = pl.read_csv(file_name,separator=";",ignore_errors=True)
             df = df.with_columns(
                     pl.col(col).str.replace(",", ".").cast(pl.Float64) for col in df.columns[1:] 
             )
@@ -190,27 +198,39 @@ class Dataloader():
                     continue
                 sanitized_dfs.append(DataframeWithWeatherAsDict(df=df,weather=weather))
 
-            example_date_df = sanitized_dfs[5]
-            print(example_date_df.weather["daily"].sunrise)
+            example_date_df = sanitized_dfs[6]
             example_date_df.df.select("Stromerzeugung [kW]")
-            total_energy = example_date_df.df["Energy [kWh]"].sum()
-            print(total_energy)
+            
+            df_smoothed = self.smooth_graph(example_date_df.df)
             
             df_pandas = example_date_df.df.to_pandas()
             plt.figure(figsize=(5, 3))
+            plt.subplot(2, 1, 1)
             plt.scatter(df_pandas['Timestamp'], df_pandas['Stromerzeugung [kW]'], color='blue')
             plt.xlabel('Time')
             plt.ylabel('Electricity Production [kW]')
-            plt.title('Electricity Production Over Time')
+            plt.title('Electricity Production Over Time (Original)')
             plt.grid(True)
             plt.xticks(rotation=45)
+
+
+            plt.subplot(2,1,2)
+            df_smoothed_pandas = df_smoothed.to_pandas()
+            plt.scatter(df_smoothed_pandas['Timestamp'], df_smoothed_pandas['Stromerzeugung smoothed'], color='red')
+            plt.xlabel('Time')
+            plt.ylabel('Electricity Production [kW]')
+            plt.title('Electricity Production Over Time (Smoothed)')
+            plt.grid(True)
+
+
+
             plt.tight_layout()
             plt.show()  
             
 
 
         csv_files = self.get_data_files()
-        read_csv_and_display_daily_data(csv_files[1])
+        read_csv_and_display_daily_data(csv_files[8])
         
 
 if __name__ == "__main__":

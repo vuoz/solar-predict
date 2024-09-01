@@ -32,12 +32,14 @@ def get_weather_data(day:str,cords:Coordinates)->tuple[DataframeWithWeatherAsDic
 # once the model works, i will add a real and abstraced version of a inference function/ class
 if __name__ == "__main__":
     dotenv.load_dotenv()
-    print("Please provide a data in the following format: YYYY-MM-DD")
+    print("Please provide a date in the following format: YYYY-MM-DD, Default is 2024-07-24")
 
     date = input()
-    if len(date) != 10 or datetime.strptime(date,"%Y-%m-%d") == None:
+    if date != "" and (len(date) != 10 or datetime.strptime(date,"%Y-%m-%d") == None):
         print("Invalid date format")
         exit(1)
+    if date == "":
+        date = "2024-07-22"
 
     model = Model(input_size=24*5)
     model.load_state_dict(torch.load("model.pth"))
@@ -59,12 +61,16 @@ if __name__ == "__main__":
     output = model(input)
     output_tensor = torch.Tensor(output)
     np_output = output_tensor.cpu().detach().numpy()
+    sum_nn =   (np_output * 0.0833).sum() 
+    sum_lable =   (lable * 0.0833).sum() 
+    print(f"Sum of NN output: {sum_nn} kWh",f"Sum of Lable: {sum_lable} kWh")
+    
 
     #Plot the output in comparison to the lable for a specified day
     time_points = pd.date_range(start="00:00", end="23:55", freq="5min")
     plt.figure(figsize=(10,5))
-    plt.plot(time_points,np_output, label='NN Output', color='red', marker='o')  
-    plt.plot(time_points,lable, label='Label Data', color='green', marker='o')  
+    plt.scatter(time_points,np_output, label='NN Output', color='red', marker='o')  
+    plt.scatter(time_points,lable, label='Label Data', color='green', marker='o')  
 
     plt.title('Neural Network Output and Label Data Overlay')
     plt.xlabel('Sample Index')
