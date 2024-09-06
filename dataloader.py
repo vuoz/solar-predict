@@ -47,7 +47,8 @@ class DataframeWithWeatherAsDict():
             percipitation = hour["precipitation"][i]
             cloud_cover = hour["cloud_cover"][i]
             sunshine_duration = hour["sunshine_duration"][i]
-            weather_dict.append([day_of_year,float(temp_2m),float(percipitation),float(cloud_cover),float(sunshine_duration)])
+            irradiance = hour["global_tilted_irradiance"][i]
+            weather_dict.append([day_of_year,float(temp_2m),float(percipitation),float(cloud_cover),float(sunshine_duration),float(irradiance)])
         return torch.Tensor(weather_dict)
 
     def df_to_lable(self)-> Tensor:
@@ -122,7 +123,7 @@ class Dataloader():
 
     def smooth_graph(self,df :pl.DataFrame)->pl.DataFrame:
         df_moving_mean = df.with_columns(
-            pl.col("Stromerzeugung [kW]").rolling_mean(window_size=12).alias("Stromerzeugung smoothed")
+            pl.col("Stromerzeugung [kW]").rolling_mean(window_size=5).alias("Stromerzeugung smoothed")
         )
         return  df_moving_mean
 
@@ -155,7 +156,7 @@ class Dataloader():
 	        "longitude": self.coords.longitude,
 	        "start_date": date_start,
 	        "end_date": date_end,
-	        "hourly": ["temperature_2m", "precipitation", "cloud_cover", "sunshine_duration"],
+	        "hourly": ["temperature_2m", "precipitation", "cloud_cover", "sunshine_duration","global_tilted_irradiance"],
 	        "daily": ["sunrise", "sunset", "sunshine_duration"],
 	        "timezone": "Europe/Berlin"
         }

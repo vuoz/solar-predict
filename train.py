@@ -60,7 +60,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dotenv.load_dotenv()
     data = Dataloader("/data",Coordinates(float(os.environ["Lat"]),float(os.environ["Long"]))).load()
-    model = Model(24*5)
+    model = Model(24*6)
     model.to(device)
     model = train(model,device,data,epochs=150,lr=0.0001)
     torch.save(model.state_dict(), "model.pth")
