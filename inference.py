@@ -16,7 +16,7 @@ def get_weather_data(day:str,cords:Coordinates)->tuple[DataframeWithWeatherAsDic
 	        "longitude": cords.longitude,
 	        "start_date": day,
 	        "end_date": day,
-	        "hourly": ["temperature_2m", "precipitation", "cloud_cover", "sunshine_duration"],
+	        "hourly": ["temperature_2m", "precipitation", "cloud_cover", "sunshine_duration","global_tilted_irradiance"],
 	        "daily": ["sunrise", "sunset", "sunshine_duration"],
 	        "timezone": "Europe/Berlin"
         }
@@ -41,7 +41,7 @@ if __name__ == "__main__":
     if date == "":
         date = "2024-07-22"
 
-    model = Model(input_size=24*5)
+    model = Model(input_size=24*6)
     model.load_state_dict(torch.load("model.pth"))
     weather,err = get_weather_data(date,Coordinates(float(os.environ["Lat"]),float(os.environ["Long"])))
     if err != None:
