@@ -70,6 +70,7 @@ class ObtainData():
         for params in file_names.docs:
             kw = params.kalenderwoche 
             year = params.jahr 
+            print("Downloading file for kw: ",kw," year: ",year)
             (contents,err) = self.get_files_contents(str(kw),str(year))
             if err != None:
                 # will add logging in the future
