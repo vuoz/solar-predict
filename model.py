@@ -69,7 +69,7 @@ class LstmModel(nn.Module):
     def __init__(self):
         super(LstmModel,self).__init__()
         self.lstm_1 = nn.LSTM(input_size=18,hidden_size=128, batch_first=True)
-        self.lstm_1 = nn.LSTM(input_size=128,hidden_size=256, batch_first=True)
+        self.lstm_2 = nn.LSTM(input_size=128,hidden_size=256, batch_first=True)
         self.fc_1 = nn.Linear(256, 128)
         self.relu_1 = nn.ReLU()
 
@@ -81,14 +81,18 @@ class LstmModel(nn.Module):
 
         pass
     def forward(self, weather_input, prev_output):
-        print(weather_input,prev_output)
-        combinded = torch.concat((weather_input,prev_output),dim=1)
-        lstm_1_out = self.lstm_1(combinded)
-        lstm_2_out = self.lstm_2(lstm_1_out)
-        fc_out = self.relu(self.fc1(lstm_2_out[:, -1, :]))  # Only the last time step (1, 128)
-        fc_out = self.relu(self.fc2(fc_out))  # (1, 64)
-        
-        # Final dense layer for the predictions (1, 12)
-        output = self.fc_final(fc_out)  # The final prediction for the next 12 time steps
+        weather_input = weather_input.unsqueeze(0)
+        prev_output = prev_output.unsqueeze(0)
+        combined = torch.cat((weather_input,prev_output),dim=1)
+        combined = combined.unsqueeze(0)
+        lstm_1_out,(_,_) = self.lstm_1(combined)
+        lstm_2_out,(_,_) = self.lstm_2(lstm_1_out)
+        fc_out = self.relu_1(self.fc_1(lstm_2_out))
+        fc_out = self.relu_2(self.fc_2(fc_out))         
+        output = self.relu_3(self.fc_3(fc_out))
+
+        # since lables are of dim [12] we need to remove the other dimensions
+        output = output.squeeze(0)
+        output = output.squeeze(0)
         return output   
 

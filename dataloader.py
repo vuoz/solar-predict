@@ -36,7 +36,7 @@ class DataframeWithWeather():
 class DataframeWithWeatherAsDict():
     df: pl.DataFrame
     weather: dict
-    def wether_to_feature_vec(self)->Tensor:
+    def weather_to_feature_vec(self)->Tensor:
         weather_dict = []
 
         date_object = datetime.strptime(self.weather["daily"]["time"][0], "%Y-%m-%d")
@@ -48,9 +48,27 @@ class DataframeWithWeatherAsDict():
             cloud_cover = hour["cloud_cover"][i]
             sunshine_duration = hour["sunshine_duration"][i]
             irradiance = hour["global_tilted_irradiance"][i]
+            if temp_2m == None or percipitation == None or cloud_cover == None or sunshine_duration == None or irradiance == None:
+                temp_2m = 0
+                percipitation = 0
+                cloud_cover = 0
+                sunshine_duration = 0
+                irradiance = 0
             weather_dict.append([day_of_year,float(temp_2m),float(percipitation),float(cloud_cover),float(sunshine_duration),float(irradiance)])
         return torch.Tensor(weather_dict)
 
+    def df_to_lable_normalized(self)-> Tensor:
+        # using the smoothed curve. since the model most likely wont be able to infer minutly changes based on hourly weather data
+        values = self.df.get_column("Stromerzeugung smoothed")
+
+        tensor = values.to_torch()
+        # noramlize the size of the tensor
+        if tensor.shape[0] != 288:
+            tensor = tensor.unsqueeze(0).unsqueeze(0)
+            new_tensor = torch.nn.functional.interpolate(tensor, size=(288),mode="linear",align_corners=False)
+            tensor_interpolated = new_tensor.squeeze(0).squeeze(0)
+            return tensor_interpolated
+        return tensor
     def df_to_lable(self)-> Tensor:
         values = self.df.get_column("Stromerzeugung [kW]")
 
@@ -123,7 +141,7 @@ class Dataloader():
 
     def smooth_graph(self,df :pl.DataFrame)->pl.DataFrame:
         df_moving_mean = df.with_columns(
-            pl.col("Stromerzeugung [kW]").rolling_mean(window_size=12).alias("Stromerzeugung smoothed")
+            pl.col("Stromerzeugung [kW]").rolling_mean(window_size=12).fill_nan(0).fill_null(0).alias("Stromerzeugung smoothed")
         )
         return  df_moving_mean
 
