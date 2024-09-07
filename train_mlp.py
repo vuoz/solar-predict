@@ -2,7 +2,7 @@ import dotenv
 from dataloader import Dataloader, Coordinates
 import torch
 from torch import nn
-from model import Model
+from model import  Model
 from dataloader import DataframeWithWeatherAsDict
 import os
 
@@ -22,8 +22,8 @@ def train(model:Model,device, data:list[DataframeWithWeatherAsDict],epochs=100,l
         running_loss = 0.0
         for day in data_train:
             
-            inputs = day.wether_to_feature_vec().to(device)
-            lable = day.df_to_lable().to(device)
+            inputs = day.weather_to_feature_vec().to(device)
+            lable = day.df_to_lable_normalized().to(device)
             # this input flattening might cause potential accuracy loss
             # in the future it might be necessary to make the model input 2d, which might increase the models
             # ability to treat the hours independently and therefore associate them with specific parts of the output,
@@ -35,6 +35,7 @@ def train(model:Model,device, data:list[DataframeWithWeatherAsDict],epochs=100,l
 
 
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             running_loss += loss.item()
@@ -43,7 +44,7 @@ def train(model:Model,device, data:list[DataframeWithWeatherAsDict],epochs=100,l
         test_loss = 0.0
         with torch.no_grad():
             for day in data_test:
-                inputs = day.wether_to_feature_vec().to(device)
+                inputs = day.weather_to_feature_vec().to(device)
                 lable = day.df_to_lable().to(device)
                 outputs = model(inputs.flatten())
                  
@@ -60,7 +61,24 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dotenv.load_dotenv()
     data = Dataloader("/data",Coordinates(float(os.environ["Lat"]),float(os.environ["Long"]))).load()
+
     model = Model(24*6)
     model.to(device)
-    model = train(model,device,data,epochs=150,lr=0.0001)
-    torch.save(model.state_dict(), "model.pth")
+
+    '''
+    model = LstmModel()
+    model.to(device)
+    model,loss_progression = train_lstm(model,device,data,epochs=150,lr=0.0001)
+    '''
+
+    model= train(model,device,data,epochs=3000,lr=0.00001)
+
+    torch.save(model.state_dict(), "model_mlp.pth")
+    '''
+    plt.plot(loss_progression)
+    plt.title('Loss Progression')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.grid(True)
+    plt.show()
+    '''

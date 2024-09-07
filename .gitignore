@@ -4,4 +4,6 @@
 __pycache__
 training_data.pkl
 images
+model_lstm.pth
+model_mlp.pth
 model.pth
