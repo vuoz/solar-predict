@@ -19,8 +19,7 @@ def train_lstm(model:LstmModel,device, data:list[DataframeWithWeatherAsDict],epo
         for day in data:
             day_loss = 0.0
             inputs = day.weather_to_feature_vec().to(device)
-            lables = day.df_to_lable_normalized().to(device)
-            lables = torch.split(lables,12)
+            lables = day.to_lable_normalized_hours_accurate().to(device)
             prev_out = torch.Tensor([0,0,0,0,0,0,0,0,0,0,0,0])
             for (input,lable) in zip(inputs,lables):
                 out = model(input.to(device).float(),prev_out.to(device).float())

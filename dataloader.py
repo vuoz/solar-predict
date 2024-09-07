@@ -80,6 +80,30 @@ class DataframeWithWeatherAsDict():
             tensor_interpolated = new_tensor.squeeze(0).squeeze(0)
             return tensor_interpolated
         return tensor
+    def to_lable_normalized_hours_accurate(self)-> Tensor:
+        df = self.df
+        df = df.with_columns(
+            pl.col("Timestamp").dt.hour().alias("Hour")
+        )
+        grouped_df = df.group_by("Hour").agg(
+            pl.col("Stromerzeugung smoothed").alias("production_values"),
+        )
+        grouped_df = grouped_df.sort("Hour")
+        def interpolate_to_twelve(values:Tensor)->Tensor:
+            tensor = values.unsqueeze(0).unsqueeze(0)
+            new_tensor = torch.nn.functional.interpolate(tensor, size=(12),mode="linear",align_corners=False)
+            tensor_interpolated = new_tensor.squeeze(0).squeeze(0)
+            return tensor_interpolated
+
+        lable_tensor_list= []
+        for row in grouped_df.iter_rows():
+            _,values = row
+            values_tensor = torch.Tensor(values)
+            interpolated = interpolate_to_twelve(values_tensor)
+            lable_tensor_list.append(interpolated)
+        return torch.stack(lable_tensor_list)
+        
+
 
 
 

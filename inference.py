@@ -94,7 +94,9 @@ def inference_lstm(date:str,default_date:str):
     lable = None
     for datapoint in train_data:
         if str(datapoint.df.get_column("Date")[0]) == date:
-            lable  = datapoint.df_to_lable_normalized()
+            lable  = datapoint.to_lable_normalized_hours_accurate()
+            # concat the individual tensors to one root tensor to be abled to plot it
+            lable = lable.flatten()
     if lable == None:
         print("No lable found")
         exit()
