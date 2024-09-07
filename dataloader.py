@@ -80,6 +80,9 @@ class DataframeWithWeatherAsDict():
             tensor_interpolated = new_tensor.squeeze(0).squeeze(0)
             return tensor_interpolated
         return tensor
+
+    # this is used for the lstm. for the lstm it is important to acutally match the lables to the input data. since the 5 time windows might shift and at one point
+    # you might start in the middle of a hour instead of the start this will most likely affect the model ability to predict the output
     def to_lable_normalized_hours_accurate(self)-> Tensor:
         df = self.df
         df = df.with_columns(
