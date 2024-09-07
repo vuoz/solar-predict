@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 
 
@@ -64,4 +65,30 @@ class Model(nn.Module):
         x = self.softplus(x)
         return x
 
+class LstmModel(nn.Module):
+    def __init__(self):
+        super(LstmModel,self).__init__()
+        self.lstm_1 = nn.LSTM(input_size=18,hidden_size=128, batch_first=True)
+        self.lstm_1 = nn.LSTM(input_size=128,hidden_size=256, batch_first=True)
+        self.fc_1 = nn.Linear(256, 128)
+        self.relu_1 = nn.ReLU()
+
+        self.fc_2 = nn.Linear(128, 64)
+        self.relu_2 = nn.ReLU()
+
+        self.fc_3 = nn.Linear(64, 12)
+        self.relu_3 = nn.ReLU()
+
+        pass
+    def forward(self, weather_input, prev_output):
+        print(weather_input,prev_output)
+        combinded = torch.concat((weather_input,prev_output),dim=1)
+        lstm_1_out = self.lstm_1(combinded)
+        lstm_2_out = self.lstm_2(lstm_1_out)
+        fc_out = self.relu(self.fc1(lstm_2_out[:, -1, :]))  # Only the last time step (1, 128)
+        fc_out = self.relu(self.fc2(fc_out))  # (1, 64)
+        
+        # Final dense layer for the predictions (1, 12)
+        output = self.fc_final(fc_out)  # The final prediction for the next 12 time steps
+        return output   
 

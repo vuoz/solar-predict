@@ -2,7 +2,7 @@ import dotenv
 from dataloader import Dataloader, Coordinates
 import torch
 from torch import nn
-from model import Model
+from model import LstmModel, Model
 from dataloader import DataframeWithWeatherAsDict
 import os
 
@@ -56,11 +56,49 @@ def train(model:Model,device, data:list[DataframeWithWeatherAsDict],epochs=100,l
 
     return model
 
+def train_lstm(model:LstmModel,device, data:list[DataframeWithWeatherAsDict],epochs=100,lr=0.0001):
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    criterion = nn.MSELoss()
+
+    total_loss = 0.0
+    for epoch in range(epochs):
+        model.train()
+        
+        for day in data:
+
+            day_loss = 0.0
+            inputs = day.wether_to_feature_vec().to(device)
+            lables = day.df_to_lable().to(device)
+            lables = torch.split(lables,12)
+            prev_out = torch.Tensor([0,0,0,0,0,0,0,0,0,0,0,0])
+            for (input,lable) in zip(inputs,lables):
+                out = model(input,prev_out)
+
+                loss = criterion(out,lable)
+                optimizer.zero_grad()    
+                loss.backward()
+                optimizer.step()
+                day_loss += loss.item() 
+                prev_out = lable
+            total_loss += day_loss / 12  # Average loss over the 12 time steps
+
+
+
+        print(f'Epoch [{epoch+1}/{epochs}], Loss: {total_loss / 100:.4f}')
+
+
+
+    pass
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dotenv.load_dotenv()
     data = Dataloader("/data",Coordinates(float(os.environ["Lat"]),float(os.environ["Long"]))).load()
+    '''
     model = Model(24*6)
     model.to(device)
-    model = train(model,device,data,epochs=150,lr=0.0001)
+    '''
+    model = LstmModel()
+    model.to(device)
+    model = train_lstm(model,device,data,epochs=150,lr=0.0001)
     torch.save(model.state_dict(), "model.pth")

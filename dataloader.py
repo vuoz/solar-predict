@@ -123,7 +123,7 @@ class Dataloader():
 
     def smooth_graph(self,df :pl.DataFrame)->pl.DataFrame:
         df_moving_mean = df.with_columns(
-            pl.col("Stromerzeugung [kW]").rolling_mean(window_size=5).alias("Stromerzeugung smoothed")
+            pl.col("Stromerzeugung [kW]").rolling_mean(window_size=12).alias("Stromerzeugung smoothed")
         )
         return  df_moving_mean
 
