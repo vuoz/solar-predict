@@ -65,20 +65,7 @@ if __name__ == "__main__":
     model = Model(24*6)
     model.to(device)
 
-    '''
-    model = LstmModel()
-    model.to(device)
-    model,loss_progression = train_lstm(model,device,data,epochs=150,lr=0.0001)
-    '''
 
     model= train(model,device,data,epochs=3000,lr=0.00001)
 
     torch.save(model.state_dict(), "model_mlp.pth")
-    '''
-    plt.plot(loss_progression)
-    plt.title('Loss Progression')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.grid(True)
-    plt.show()
-    '''
