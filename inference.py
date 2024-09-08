@@ -22,7 +22,7 @@ def get_weather_data(day:str,cords:Coordinates,historical:bool)->tuple[Dataframe
 	        "longitude": cords.longitude,
 	        "start_date": day,
 	        "end_date": day,
-	        "hourly": ["temperature_2m", "precipitation", "cloud_cover", "sunshine_duration","global_tilted_irradiance"],
+	        "hourly": ["temperature_2m", "precipitation", "cloud_cover", "sunshine_duration","global_tilted_irradiance","relative_humidity_2m", "wind_speed_10m"],
 	        "daily": ["sunrise", "sunset", "sunshine_duration"],
 	        "timezone": "Europe/Berlin"
         }
@@ -41,7 +41,7 @@ def inference_mlp(date:str,default_date:str,model_path:str):
     if date == "":
         date = default_date
 
-    model = Model(input_size=24*6)
+    model = Model(input_size=24*8)
     model.load_state_dict(torch.load(model_path))
 
     date_to_check = datetime.strptime(date,"%Y-%m-%d")
@@ -160,8 +160,8 @@ def inference_lstm(date:str,default_date:str):
 # once the model works, i will add a real and abstraced version of a inference function/ class that can be used to acutally run the model and execute predictions once the model has the required accuracy
 if __name__ == "__main__":
     dotenv.load_dotenv()
-    default_date = "2023-12-22"
+    default_date = "2024-08-22"
     print(f"Please provide a date in the following format: YYYY-MM-DD, Default is {default_date}")
     date = input()
-    inference_mlp(date,default_date,"models/winter.pth")
+    inference_mlp(date,default_date,"models/summer.pth")
 

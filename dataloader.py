@@ -47,15 +47,20 @@ class DataframeWithWeatherAsDict():
             cloud_cover = hour["cloud_cover"][i]
             sunshine_duration = hour["sunshine_duration"][i]
             irradiance = hour["global_tilted_irradiance"][i]
-            if temp_2m == None or percipitation == None or cloud_cover == None or sunshine_duration == None or irradiance == None:
+            wind_speed = hour["wind_speed_10m"][i]
+            humidity = hour["relative_humidity_2m"][i]
+            if temp_2m == None or percipitation == None or cloud_cover == None or sunshine_duration == None or irradiance == None or wind_speed == None or humidity == None:
                 temp_2m = 0
                 percipitation = 0
                 cloud_cover = 0
                 sunshine_duration = 0
                 irradiance = 0
-            weather_dict.append([day_of_year,float(temp_2m),float(percipitation),float(cloud_cover),float(sunshine_duration),float(irradiance)])
+                humidity = 0
+                wind_speed= 0
+            weather_dict.append([day_of_year,float(temp_2m),float(percipitation),float(cloud_cover),float(sunshine_duration),float(irradiance),float(wind_speed),float(humidity)])
         return torch.Tensor(weather_dict)
 
+   
     def df_to_lable_normalized(self)-> Tensor:
         # using the smoothed curve. since the model most likely wont be able to infer minutly changes based on hourly weather data
         values = self.df.get_column("Stromerzeugung smoothed")
@@ -221,7 +226,7 @@ class Dataloader():
 	        "longitude": self.coords.longitude,
 	        "start_date": date_start,
 	        "end_date": date_end,
-	        "hourly": ["temperature_2m", "precipitation", "cloud_cover", "sunshine_duration","global_tilted_irradiance"],
+	        "hourly": ["temperature_2m", "precipitation", "cloud_cover", "sunshine_duration","global_tilted_irradiance","relative_humidity_2m", "wind_speed_10m"],
 	        "daily": ["sunrise", "sunset", "sunshine_duration"],
 	        "timezone": "Europe/Berlin"
         }

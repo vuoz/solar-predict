@@ -33,9 +33,7 @@ def train(model:Model,device, data:list[DataframeWithWeatherAsDict],name:str,que
             inputs = day.weather_to_feature_vec().to(device)
             lable = day.df_to_lable_normalized().to(device)
             # this input flattening might cause potential accuracy loss
-            # in the future it might be necessary to make the model input 2d, which might increase the models
-            # ability to treat the hours independently and therefore associate them with specific parts of the output,
-            # which might intern improve total accuracy
+            # in the future it might be necessary to make the model input 2d, which might increase the models ability to treat the hours independently and therefore associate them with specific parts of the output, which might intern improve total accuracy
             outputs = model(inputs.flatten())
 
             
@@ -86,7 +84,7 @@ if __name__ == "__main__":
     processes = []
     res_queue = mp.Queue()
     for season in seasonal_data_list:
-        model = Model(24*6)
+        model = Model(24*8)
         model.to(device)
         p = mp.Process(target=train, args=(model,device,season[0],f"models/{season[1]}",res_queue,500,0.00001))
         p.start()
