@@ -9,8 +9,14 @@ import dotenv
 import matplotlib.pyplot as plt;
 import pandas as pd;
 
-def get_weather_data(day:str,cords:Coordinates)->tuple[DataframeWithWeatherAsDict|None,Exception|None]:
-    url = "https://api.open-meteo.com/v1/forecast"
+def get_weather_data(day:str,cords:Coordinates,historical:bool)->tuple[DataframeWithWeatherAsDict|None,Exception|None]:
+    
+    url = ""
+    if historical:
+        url = "https://archive-api.open-meteo.com/v1/archive";
+    else:
+        url = "https://api.open-meteo.com/v1/forecast"
+
     params = {
 	        "latitude": cords.latitude,
 	        "longitude": cords.longitude,
@@ -36,13 +42,23 @@ def inference_mlp(date:str,default_date:str):
 
     model = Model(input_size=24*6)
     model.load_state_dict(torch.load("model_mlp.pth"))
-    weather,err = get_weather_data(date,Coordinates(float(os.environ["Lat"]),float(os.environ["Long"])))
+
+    date_to_check = datetime.strptime(date,"%Y-%m-%d")
+    curr_date = datetime.now()
+    historical = False
+    if date_to_check < curr_date:
+        historical = True
+    else:
+        historical = False
+ 
+    weather,err = get_weather_data(date,Coordinates(float(os.environ["Lat"]),float(os.environ["Long"])),historical)
     if err != None:
         print(err)
         exit()
     if weather == None:
         print("Could not get weather")
         exit()
+    print(weather.weather)
     train_data = Dataloader("/data",Coordinates(float(os.environ["Lat"]),float(os.environ["Long"]))).load()
     lable = None
     for datapoint in train_data:
@@ -83,7 +99,15 @@ def inference_lstm(date:str,default_date:str):
 
     model = LstmModel()
     model.load_state_dict(torch.load("model_lstm.pth"))
-    weather,err = get_weather_data(date,Coordinates(float(os.environ["Lat"]),float(os.environ["Long"])))
+
+    date_to_check = datetime.strptime(date,"%Y-%m-%d")
+    curr_date = datetime.now()
+    historical = False
+    if date_to_check < curr_date:
+        historical = True
+    else:
+        historical = False
+    weather,err = get_weather_data(date,Coordinates(float(os.environ["Lat"]),float(os.environ["Long"])),historical)
     if err != None:
         print(err)
         exit(1)
@@ -134,8 +158,8 @@ def inference_lstm(date:str,default_date:str):
 # once the model works, i will add a real and abstraced version of a inference function/ class that can be used to acutally run the model and execute predictions once the model has the required accuracy
 if __name__ == "__main__":
     dotenv.load_dotenv()
-    default_date = "2024-08-08"
+    default_date = "2023-12-23"
     print(f"Please provide a date in the following format: YYYY-MM-DD, Default is {default_date}")
     date = input()
-    inference_lstm(date,default_date)
+    inference_mlp(date,default_date)
 
