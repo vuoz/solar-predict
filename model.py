@@ -68,7 +68,7 @@ class Model(nn.Module):
 class LstmModel(nn.Module):
     def __init__(self):
         super(LstmModel,self).__init__()
-        self.lstm_1 = nn.LSTM(input_size=18,hidden_size=128, batch_first=True)
+        self.lstm_1 = nn.LSTM(input_size=20,hidden_size=128, batch_first=True)
         self.lstm_2 = nn.LSTM(input_size=128,hidden_size=256, batch_first=True)
         self.fc_1 = nn.Linear(256, 128)
         self.relu_1 = nn.ReLU()

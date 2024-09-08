@@ -120,9 +120,26 @@ def inference_lstm(date:str,default_date:str):
         exit(1)
     if date == "":
         date = default_date
+    model_pth = ""
+    date_datetime = datetime.strptime(date,"%Y-%m-%d")
+    if date_datetime.month in [12,1,2]:
+        model_pth = "models/lstm_winter.pth"
+    elif date_datetime.month in [3,4,5]:
+        model_pth = "models/lstm_spring.pth"
+    elif date_datetime.month in [6,7,8]:
+        model_pth = "models/lstm_summer.pth"
+    elif date_datetime.month in [9,10,11]:
+        model_pth = "models/lstm_autumn.pth"
+    else:
+        print("Invalid date")
+        exit(1)
+
+    print(f"Using model: {model_pth}")
+
+
 
     model = LstmModel()
-    model.load_state_dict(torch.load("model_lstm.pth"))
+    model.load_state_dict(torch.load(model_pth))
 
     date_to_check = datetime.strptime(date,"%Y-%m-%d")
     curr_date = datetime.now()
@@ -153,13 +170,24 @@ def inference_lstm(date:str,default_date:str):
     input = weather.weather_to_feature_vec().to(device)
     output_tensor = torch.Tensor().to(device)
     prev_out = torch.Tensor([0,0,0,0,0,0,0,0,0,0,0,0])
-    for hour in input:
-        print("this is output tensor",output_tensor)
+    for i,hour in enumerate(input):
+        if i == 0:
+            output_hour = model(hour.to(device),prev_out.to(device))   
+            prev_out = output_hour
+            continue
         output_hour = model(hour.to(device),prev_out.to(device))   
         prev_out = output_hour
-        print(output_hour)
         output_tensor = torch.cat((output_tensor.to(device),output_hour.to(device)),dim=0)
-    np_output = output_tensor.cpu().detach().numpy()
+    output_tensor = torch.cat((output_tensor.to(device),torch.Tensor([0,0,0,0,0,0,0,0,0,0,0,0]).to(device)),dim=0)
+    # applying rolling mean to nn output to smooth the curve
+    windows = output_tensor.unfold(dimension=0, size=12, step=1).to(device)
+    rolling_mean = windows.mean(dim=1)
+    padding_value = rolling_mean[0].item()
+    padding = torch.full((11,),padding_value).to(device)
+    rolling_mean_padded = torch.cat((padding,rolling_mean),dim=0).to(device)
+
+
+    np_output = rolling_mean_padded.cpu().detach().numpy()
     sum_nn =   (np_output * 0.0833).sum() 
     sum_lable =   (lable * 0.0833).sum() 
     print(f"Sum of NN output: {sum_nn} kWh",f"Sum of Lable: {sum_lable} kWh")
@@ -182,8 +210,8 @@ def inference_lstm(date:str,default_date:str):
 # once the model works, i will add a real and abstraced version of a inference function/ class that can be used to acutally run the model and execute predictions once the model has the required accuracy
 if __name__ == "__main__":
     dotenv.load_dotenv()
-    default_date = "2024-02-22"
+    default_date = "2024-05-02"
     print(f"Please provide a date in the following format: YYYY-MM-DD, Default is {default_date}")
     date = input()
-    inference_mlp(date,default_date)
+    inference_lstm(date,default_date)
 

@@ -51,7 +51,7 @@ def train(model:Model,device, data:list[DataframeWithWeatherAsDict],name:str,que
         with torch.no_grad():
             for day in data_test:
                 inputs = day.weather_to_feature_vec().to(device)
-                lable = day.df_to_lable().to(device)
+                lable = day.df_to_lable_normalized().to(device)
                 outputs = model(inputs.flatten())
                  
                 loss = criterion(outputs,lable.float())
@@ -93,6 +93,7 @@ if __name__ == "__main__":
         p = mp.Process(target=train, args=(model,device,season[0],f"models/{season[1]}",res_queue,500,0.00001))
         p.start()
         processes.append(p)
+
     for p in processes:
         p.join()
 
