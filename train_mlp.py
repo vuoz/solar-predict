@@ -1,21 +1,29 @@
 import dotenv
-from dataloader import Dataloader, Coordinates
+from dataloader import Dataloader, Coordinates, split_dfs_by_season
 import torch
 from torch import nn
 from model import  Model
 from dataloader import DataframeWithWeatherAsDict
 import os
+import torch.multiprocessing as mp
+import queue
+import matplotlib.pyplot as plt
 
 # very simple training loop with a train and test split
-def train(model:Model,device, data:list[DataframeWithWeatherAsDict],epochs=100,lr=0.001):
-    train_size = int(0.8 * len(data))
+def train(model:Model,device, data:list[DataframeWithWeatherAsDict],name:str,queue,epochs=100,lr=0.001):
+    train_size = int(0.9 * len(data))
     data_train = data[:train_size]
     data_test = data[train_size:]
 
     
+    loss_train = []
+    loss_test = []
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    #optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr,weight_decay=1e-4)
     criterion = nn.MSELoss()
+    last_test_loss = 0
+    no_improvement = 0
     for epoch in range(epochs):
         model.train()
 
@@ -53,19 +61,54 @@ def train(model:Model,device, data:list[DataframeWithWeatherAsDict],epochs=100,l
 
         avg_test_loss = test_loss / len(data_test)
 
-        print(f'Epoch {epoch+1}, Train Loss: {running_loss / len(data)}, Test Loss: {avg_test_loss}')
+        loss_train.append(running_loss / len(data))
+        loss_test.append(avg_test_loss)
+        if avg_test_loss > last_test_loss:
+            no_improvement += 1
+        if no_improvement > 50:
+            break
+        last_test_loss = avg_test_loss
 
-    return model
+        print(f'Name:{name} Epoch {epoch+1}, Train Loss: {running_loss / len(data)}, Test Loss: {avg_test_loss}')
+
+    torch.save(model.state_dict(), f"{name}.pth")
+    queue.put((name,loss_train,loss_test))
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dotenv.load_dotenv()
     data = Dataloader("/data",Coordinates(float(os.environ["Lat"]),float(os.environ["Long"]))).load()
 
-    model = Model(24*6)
-    model.to(device)
+    seasonal_data = split_dfs_by_season(data)
+    seasonal_data_list = [(seasonal_data.summer,"summer"),(seasonal_data.winter,"winter"),(seasonal_data.spring,"spring"),(seasonal_data.autumn,"autumn")]
 
+    mp.set_start_method('spawn')
+    processes = []
+    res_queue = mp.Queue()
+    for season in seasonal_data_list:
+        model = Model(24*6)
+        model.to(device)
+        p = mp.Process(target=train, args=(model,device,season[0],f"models/{season[1]}",res_queue,500,0.00001))
+        p.start()
+        processes.append(p)
+    for p in processes:
+        p.join()
 
-    model= train(model,device,data,epochs=3000,lr=0.00001)
+    results = []
+    while not res_queue.empty():
+        try:
+            results.append(res_queue.get())
+        except queue.Empty:
+            break
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8))  # 2 rows, 2 columns
+    for (ax,data) in zip(axes.flat,results):
+        ax.plot(data[1], label='Train Loss')
+        ax.plot(data[2], label='Test Loss')
+        ax.set_title(f'{data[0]}')
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Loss')
+        ax.legend()
 
-    torch.save(model.state_dict(), "model_mlp.pth")
+    plt.tight_layout()
+    plt.show()
+

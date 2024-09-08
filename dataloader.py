@@ -31,7 +31,6 @@ class SenecExportType():
 class DataframeWithWeather():
     df: pl.DataFrame
     weather: WeatherData
-
 @dataclass
 class DataframeWithWeatherAsDict():
     df: pl.DataFrame
@@ -109,9 +108,30 @@ class DataframeWithWeatherAsDict():
 
 
 
-
- 
-  
+@dataclass
+class DataframesWithWeatherSortedBySeason():
+    spring: list[DataframeWithWeatherAsDict]
+    summer: list[DataframeWithWeatherAsDict]
+    winter: list[DataframeWithWeatherAsDict]
+    autumn: list[DataframeWithWeatherAsDict]
+def split_dfs_by_season(data:list[DataframeWithWeatherAsDict])->DataframesWithWeatherSortedBySeason: 
+    spring = []
+    summer = []
+    winter = []
+    autumn = []
+    for day in data:
+        # using the date in the weather data for simplicity
+        date = datetime.strptime(day.weather["daily"]["time"][0], "%Y-%m-%d")
+        month = date.month
+        if month == 3 or month == 4 or month == 5:
+            spring.append(day)
+        elif month == 6 or month == 7 or month == 8:
+            summer.append(day)
+        elif month == 9 or month == 10 or month == 11:
+            autumn.append(day)
+        else:
+            winter.append(day)
+    return DataframesWithWeatherSortedBySeason(spring=spring,summer=summer,winter=winter,autumn=autumn)
 class Dataloader():
     def __init__(self, path,coordinates:Coordinates):
         self.path = path

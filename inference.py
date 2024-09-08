@@ -28,12 +28,13 @@ def get_weather_data(day:str,cords:Coordinates,historical:bool)->tuple[Dataframe
         }
     resp =requests.get(url,params=params)
     if resp.status_code != 200:
-        return (None,Exception(f"Failed to get weather data for window {day}-{day}, error: {resp.status_code}"))
+        return (None,Exception(f"Failed to get weather data for window {day}, error: {resp.status_code}"))
     data = resp.json()
     data_struct = DataframeWithWeatherAsDict(df=polars.DataFrame(),weather=data)
     return (data_struct,None)
 
-def inference_mlp(date:str,default_date:str):
+def inference_mlp(date:str,default_date:str,model_path:str):
+
     if date != "" and (len(date) != 10 or datetime.strptime(date,"%Y-%m-%d") == None):
         print("Invalid date format")
         exit(1)
@@ -41,7 +42,7 @@ def inference_mlp(date:str,default_date:str):
         date = default_date
 
     model = Model(input_size=24*6)
-    model.load_state_dict(torch.load("model_mlp.pth"))
+    model.load_state_dict(torch.load(model_path))
 
     date_to_check = datetime.strptime(date,"%Y-%m-%d")
     curr_date = datetime.now()
@@ -64,6 +65,7 @@ def inference_mlp(date:str,default_date:str):
     for datapoint in train_data:
         if str(datapoint.df.get_column("Date")[0]) == date:
             lable  = datapoint.df_to_lable_normalized()
+
     if lable == None:
         print("No lable found")
         exit()
@@ -158,8 +160,8 @@ def inference_lstm(date:str,default_date:str):
 # once the model works, i will add a real and abstraced version of a inference function/ class that can be used to acutally run the model and execute predictions once the model has the required accuracy
 if __name__ == "__main__":
     dotenv.load_dotenv()
-    default_date = "2023-12-23"
+    default_date = "2023-12-22"
     print(f"Please provide a date in the following format: YYYY-MM-DD, Default is {default_date}")
     date = input()
-    inference_mlp(date,default_date)
+    inference_mlp(date,default_date,"models/winter.pth")
 
