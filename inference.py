@@ -33,16 +33,31 @@ def get_weather_data(day:str,cords:Coordinates,historical:bool)->tuple[Dataframe
     data_struct = DataframeWithWeatherAsDict(df=polars.DataFrame(),weather=data)
     return (data_struct,None)
 
-def inference_mlp(date:str,default_date:str,model_path:str):
-
+def inference_mlp(date:str,default_date:str):
     if date != "" and (len(date) != 10 or datetime.strptime(date,"%Y-%m-%d") == None):
         print("Invalid date format")
         exit(1)
     if date == "":
         date = default_date
+    model_pth = ""
+    date_datetime = datetime.strptime(date,"%Y-%m-%d")
+    if date_datetime.month in [12,1,2]:
+        model_pth = "models/winter.pth"
+    elif date_datetime.month in [3,4,5]:
+        model_pth = "models/spring.pth"
+    elif date_datetime.month in [6,7,8]:
+        model_pth = "models/summer.pth"
+    elif date_datetime.month in [9,10,11]:
+        model_pth = "models/autumn.pth"
+    else:
+        print("Invalid date")
+        exit(1)
+
+    print(f"Using model: {model_pth}")
+
 
     model = Model(input_size=24*8)
-    model.load_state_dict(torch.load(model_path))
+    model.load_state_dict(torch.load(model_pth))
 
     date_to_check = datetime.strptime(date,"%Y-%m-%d")
     curr_date = datetime.now()
@@ -167,8 +182,8 @@ def inference_lstm(date:str,default_date:str):
 # once the model works, i will add a real and abstraced version of a inference function/ class that can be used to acutally run the model and execute predictions once the model has the required accuracy
 if __name__ == "__main__":
     dotenv.load_dotenv()
-    default_date = "2024-07-22"
+    default_date = "2024-02-22"
     print(f"Please provide a date in the following format: YYYY-MM-DD, Default is {default_date}")
     date = input()
-    inference_mlp(date,default_date,"models/summer.pth")
+    inference_mlp(date,default_date)
 

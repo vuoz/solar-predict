@@ -78,6 +78,10 @@ if __name__ == "__main__":
     data = Dataloader("/data",Coordinates(float(os.environ["Lat"]),float(os.environ["Long"]))).load()
 
     seasonal_data = split_dfs_by_season(data)
+    print("winter dataset length: ",len(seasonal_data.winter))
+    print("summer dataset length:",len(seasonal_data.summer))
+    print("spring dataset length:",len(seasonal_data.spring))
+    print("autumn dataset length:",len(seasonal_data.autumn))
     seasonal_data_list = [(seasonal_data.summer,"summer"),(seasonal_data.winter,"winter"),(seasonal_data.spring,"spring"),(seasonal_data.autumn,"autumn")]
 
     mp.set_start_method('spawn')
