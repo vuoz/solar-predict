@@ -6,7 +6,7 @@ Senec_Email=
 Senec_Pass=
 ```
 
-### Get all the csv files from senec dashboarb. Please create a ```/data``` folder in the root.
+### Get all the csv files from senec dashboard. Please create a ```/data``` folder in the root.
 ```python
 python downloadData.py
 ```
