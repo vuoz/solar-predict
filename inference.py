@@ -73,13 +73,13 @@ def inference_mlp(date:str,default_date:str,model_path:str):
     input = weather.weather_to_feature_vec().to(device).flatten()
     output = model(input)
     output_tensor = torch.Tensor(output).to(device)
-    print("shape raw tensor",output_tensor.shape)
+
+    # applying rolling mean to nn output to smooth the curve
     windows = output_tensor.unfold(dimension=0, size=12, step=1).to(device)
     rolling_mean = windows.mean(dim=1)
     padding_value = rolling_mean[0].item()
     padding = torch.full((11,),padding_value).to(device)
     rolling_mean_padded = torch.cat((padding,rolling_mean),dim=0).to(device)
-    print("shape after applying rolling mean", rolling_mean_padded.shape)
 
     np_output = rolling_mean_padded.cpu().detach().numpy()
     sum_nn =   (np_output * 0.0833).sum() 
