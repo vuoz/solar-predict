@@ -59,7 +59,6 @@ def inference_mlp(date:str,default_date:str,model_path:str):
     if weather == None:
         print("Could not get weather")
         exit()
-    print(weather.weather)
     train_data = Dataloader("/data",Coordinates(float(os.environ["Lat"]),float(os.environ["Long"]))).load()
     lable = None
     for datapoint in train_data:
@@ -73,8 +72,16 @@ def inference_mlp(date:str,default_date:str,model_path:str):
     model.to(device)
     input = weather.weather_to_feature_vec().to(device).flatten()
     output = model(input)
-    output_tensor = torch.Tensor(output)
-    np_output = output_tensor.cpu().detach().numpy()
+    output_tensor = torch.Tensor(output).to(device)
+    print("shape raw tensor",output_tensor.shape)
+    windows = output_tensor.unfold(dimension=0, size=12, step=1).to(device)
+    rolling_mean = windows.mean(dim=1)
+    padding_value = rolling_mean[0].item()
+    padding = torch.full((11,),padding_value).to(device)
+    rolling_mean_padded = torch.cat((padding,rolling_mean),dim=0).to(device)
+    print("shape after applying rolling mean", rolling_mean_padded.shape)
+
+    np_output = rolling_mean_padded.cpu().detach().numpy()
     sum_nn =   (np_output * 0.0833).sum() 
     sum_lable =   (lable * 0.0833).sum() 
     print(f"Sum of NN output: {sum_nn} kWh",f"Sum of Lable: {sum_lable} kWh")
@@ -160,7 +167,7 @@ def inference_lstm(date:str,default_date:str):
 # once the model works, i will add a real and abstraced version of a inference function/ class that can be used to acutally run the model and execute predictions once the model has the required accuracy
 if __name__ == "__main__":
     dotenv.load_dotenv()
-    default_date = "2024-08-22"
+    default_date = "2024-07-22"
     print(f"Please provide a date in the following format: YYYY-MM-DD, Default is {default_date}")
     date = input()
     inference_mlp(date,default_date,"models/summer.pth")
