@@ -31,7 +31,9 @@ def train(model:Model,device, data:list[DataframeWithWeatherAsDict],name:str,que
         for day in data_train:
             
             inputs = day.weather_to_feature_vec().to(device)
-            lable = day.df_to_lable_normalized().to(device)
+            #lable = day.df_to_lable_normalized().to(device)
+
+            lable = day.to_lable_normalized_and_smoothed().to(device)
             # this input flattening might cause potential accuracy loss
             # in the future it might be necessary to make the model input 2d, which might increase the models ability to treat the hours independently and therefore associate them with specific parts of the output, which might intern improve total accuracy
             outputs = model(inputs.flatten())
@@ -51,7 +53,8 @@ def train(model:Model,device, data:list[DataframeWithWeatherAsDict],name:str,que
         with torch.no_grad():
             for day in data_test:
                 inputs = day.weather_to_feature_vec().to(device)
-                lable = day.df_to_lable_normalized().to(device)
+                #lable = day.df_to_lable_normalized().to(device)
+                lable = day.to_lable_normalized_and_smoothed().to(device)
                 outputs = model(inputs.flatten())
                  
                 loss = criterion(outputs,lable.float())
@@ -78,6 +81,7 @@ if __name__ == "__main__":
     data = Dataloader("/data",Coordinates(float(os.environ["Lat"]),float(os.environ["Long"]))).load()
 
     seasonal_data = split_dfs_by_season(data)
+    seasonal_data.normalize_seasons()
     print("winter dataset length: ",len(seasonal_data.winter))
     print("summer dataset length:",len(seasonal_data.summer))
     print("spring dataset length:",len(seasonal_data.spring))
@@ -90,7 +94,7 @@ if __name__ == "__main__":
     for season in seasonal_data_list:
         model = Model(24*8)
         model.to(device)
-        p = mp.Process(target=train, args=(model,device,season[0],f"models/{season[1]}",res_queue,500,0.00001))
+        p = mp.Process(target=train, args=(model,device,season[0],f"models/{season[1]}",res_queue,200,0.00001))
         p.start()
         processes.append(p)
 

@@ -117,6 +117,50 @@ class DataframeWithWeatherAsDict():
             return tensor_interpolated
         return tensor
 
+    def to_lable_normalized_and_smoothed(self)-> Tensor:
+        values = self.df.get_column("Stromerzeugung Normalized smoothed")
+
+        tensor = values.to_torch()
+        # noramlize the size of the tensor
+        if tensor.shape[0] != 288:
+            tensor = tensor.unsqueeze(0).unsqueeze(0)
+            new_tensor = torch.nn.functional.interpolate(tensor, size=(288),mode="linear",align_corners=False)
+            tensor_interpolated = new_tensor.squeeze(0).squeeze(0)
+            return tensor_interpolated
+
+        return tensor
+    def to_lable_normalized_smoothed_and_hours_accurate(self)-> Tensor:
+        df = self.df 
+        df = df.with_columns(
+            pl.col("Timestamp").dt.hour().alias("Hour")
+        )
+        grouped_df = df.group_by("Hour").agg(
+            pl.col("Stromerzeugung Normalized smoothed").alias("production_normalized_values"),
+        )
+        grouped_df = grouped_df.sort("Hour")
+        def interpolate_to_twelve(values:Tensor)->Tensor:
+            tensor = values.unsqueeze(0).unsqueeze(0)
+            new_tensor = torch.nn.functional.interpolate(tensor, size=(12),mode="linear",align_corners=False)
+            tensor_interpolated = new_tensor.squeeze(0).squeeze(0)
+            return tensor_interpolated
+
+        lable_tensor_list= []
+        for row in grouped_df.iter_rows():
+            _,values = row
+            values_tensor = torch.Tensor(values)
+            interpolated = interpolate_to_twelve(values_tensor)
+            lable_tensor_list.append(interpolated)
+        return torch.stack(lable_tensor_list)
+     
+ 
+
+
+    def smooth_graph(self):
+
+        self.df = self.df.with_columns(
+            pl.col("Stromerzeugung Normalized").rolling_mean(window_size=20).fill_nan(0).fill_null(0).alias("Stromerzeugung Normalized smoothed")
+        )
+        
     # this is used for the lstm. the lables actually match the lables to the input data. since the 5 time windows might shift and at one point
     # you might start in the middle of a hour instead of the start this will most likely affect the model ability to predict the output
     def to_lable_normalized_hours_accurate(self)-> Tensor:
@@ -151,6 +195,64 @@ class DataframesWithWeatherSortedBySeason():
     summer: list[DataframeWithWeatherAsDict]
     winter: list[DataframeWithWeatherAsDict]
     autumn: list[DataframeWithWeatherAsDict]
+    def normalize_seasons(self):
+        def inner(dfs:list[DataframeWithWeatherAsDict])->list[DataframeWithWeatherAsDict]:
+            list_weather = [df.weather for df in dfs]
+            dfs_only = [df.df for df in dfs]
+            combined_df = pl.concat(dfs_only)
+            combined_df = combined_df.with_columns(
+                ((pl.col("Stromerzeugung [kW]") - pl.col("Stromerzeugung [kW]").min()) / 
+                (pl.col("Stromerzeugung [kW]").max() - pl.col("Stromerzeugung [kW]").min()))
+                .alias("Stromerzeugung Normalized")
+            )
+            split_dfs = [
+                combined_df.filter(pl.col("Date") == date)
+                for date in combined_df.select(pl.col("Date")).unique().to_series()
+            ]
+            df_finished:list[DataframeWithWeatherAsDict] = []
+            # as inefficient as it gets
+            for df in split_dfs:
+                for weather in list_weather:
+                    if str(df.get_column("Date")[0]) == weather["daily"]["time"][0]:
+                        df_finished.append(DataframeWithWeatherAsDict(df,weather))
+
+            for df in df_finished:
+                df.smooth_graph()
+            return df_finished
+        self.spring = inner(self.spring) 
+        self.summer = inner(self.summer)
+        self.winter = inner(self.winter)
+        self.autumn = inner(self.autumn)
+    def get_data_by_date(self,date)->DataframeWithWeatherAsDict| None:
+        date_parsed = datetime.strptime(date,"%Y-%m-%d")
+        if date_parsed.month in [12,1,2]:
+            for day in self.winter:
+                if str(day.df.get_column("Date")[0]) == date:
+                    return day
+            return None
+        elif date_parsed.month in [3,4,5]:
+            for day in self.spring:
+                if str(day.df.get_column("Date")[0]) == date:
+                    return day
+            return None
+        elif date_parsed.month in [6,7,8]:
+            for day in self.summer:
+                if str(day.df.get_column("Date")[0]) == date:
+                    return day
+            return None
+        elif date_parsed.month in [9,10,11]:
+            for day in self.autumn:
+                if str(day.df.get_column("Date")[0]) == date:
+                    return day
+            return None
+        else:
+            return None
+
+
+
+
+
+
 def split_dfs_by_season(data:list[DataframeWithWeatherAsDict])->DataframesWithWeatherSortedBySeason: 
     spring = []
     summer = []
@@ -315,7 +417,6 @@ class Dataloader():
             plt.title('Electricity Production Over Time (Original)')
             plt.grid(True)
             plt.xticks(rotation=45)
-
 
             plt.subplot(2,1,2)
             df_smoothed_pandas = df_smoothed.to_pandas()

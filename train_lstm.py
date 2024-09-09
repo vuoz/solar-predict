@@ -30,17 +30,21 @@ def train_lstm(model:LstmModel,device, data:list[DataframeWithWeatherAsDict],nam
         for day in train_set:
             day_loss = 0.0
             inputs = day.weather_to_feature_vec().to(device)
-            lables = day.to_lable_normalized_hours_accurate().to(device)
+            #lables = day.to_lable_normalized_hours_accurate().to(device)
+            labels = day.to_lable_normalized_smoothed_and_hours_accurate().to(device)
             prev_out = torch.Tensor([0,0,0,0,0,0,0,0,0,0,0,0])
-            for (input,lable) in zip(inputs,lables):
+            for (input,lable) in zip(inputs,labels):
                 out = model(input.to(device).float(),prev_out.to(device).float())
 
                 # trying out using the models output as next input to make it more independent and actually relyable in inference mode when there is no true data to hand
                 # when in teacher mode prev_out would be set to label
+                '''
                 if random.random() < scheduled_sampling_prob:
                     prev_out = lable
                 else:
                     prev_out = out.detach()
+                '''
+                prev_out = lable
 
                 loss = criterion(out,lable.float())
                 optimizer.zero_grad()    
@@ -57,11 +61,12 @@ def train_lstm(model:LstmModel,device, data:list[DataframeWithWeatherAsDict],nam
         with torch.no_grad():
             for day in test_set:
                 inputs = day.weather_to_feature_vec().to(device)
-                lable = day.to_lable_normalized_hours_accurate().to(device)
+                #l lable = day.to_lable_normalized_hours_accurate().to(device)
+                label = day.to_lable_normalized_smoothed_and_hours_accurate().to(device)
 
                 day_loss = 0.0
                 prev_out = torch.Tensor([0,0,0,0,0,0,0,0,0,0,0,0])
-                for (input,label) in zip(inputs,lable):
+                for (input,label) in zip(inputs,label):
 
                     out = model(input.to(device).float(),prev_out.to(device).float())
                     prev_out = out                     
@@ -70,7 +75,7 @@ def train_lstm(model:LstmModel,device, data:list[DataframeWithWeatherAsDict],nam
                 test_loss += day_loss / 12
         if last_test_loss > last_test_loss:
             no_improvement += 1
-        if no_improvement > 20:
+        if no_improvement > 10:
             break
         last_test_loss = test_loss
 
@@ -87,6 +92,7 @@ if __name__ == "__main__":
     data = Dataloader("/data",Coordinates(float(os.environ["Lat"]),float(os.environ["Long"]))).load()
 
     seasonal_data = split_dfs_by_season(data)
+    seasonal_data.normalize_seasons()
     print("winter dataset length: ",len(seasonal_data.winter))
     print("summer dataset length:",len(seasonal_data.summer))
     print("spring dataset length:",len(seasonal_data.spring))
@@ -101,7 +107,7 @@ if __name__ == "__main__":
     for season in seasonal_data_list:
         model = LstmModel()
         model.to(device)
-        p = mp.Process(target=train_lstm, args=(model,device,season[0],season[1],res_queue,75,0.001))
+        p = mp.Process(target=train_lstm, args=(model,device,season[0],season[1],res_queue,400,0.001))
         p.start()
         processes.append(p)
 

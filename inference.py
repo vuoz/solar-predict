@@ -1,8 +1,9 @@
 import polars
+from scipy.sparse import data
 from model import Model,LstmModel
 import torch
 import requests
-from dataloader import Coordinates, DataframeWithWeatherAsDict,Dataloader;
+from dataloader import Coordinates, DataframeWithWeatherAsDict,Dataloader, split_dfs_by_season;
 from datetime import datetime
 import os
 import dotenv
@@ -75,14 +76,16 @@ def inference_mlp(date:str,default_date:str):
         print("Could not get weather")
         exit()
     train_data = Dataloader("/data",Coordinates(float(os.environ["Lat"]),float(os.environ["Long"]))).load()
-    lable = None
-    for datapoint in train_data:
-        if str(datapoint.df.get_column("Date")[0]) == date:
-            lable  = datapoint.df_to_lable_normalized()
+    seasons = split_dfs_by_season(train_data)
+    seasons.normalize_seasons()
+    
+    
 
-    if lable == None:
-        print("No lable found")
+    data = seasons.get_data_by_date(date)
+    if data == None:
+        print("Date not found in data")
         exit()
+    label = data.to_lable_normalized_and_smoothed()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     input = weather.weather_to_feature_vec().to(device).flatten()
@@ -98,7 +101,7 @@ def inference_mlp(date:str,default_date:str):
 
     np_output = rolling_mean_padded.cpu().detach().numpy()
     sum_nn =   (np_output * 0.0833).sum() 
-    sum_lable =   (lable * 0.0833).sum() 
+    sum_lable =   (label * 0.0833).sum() 
     print(f"Sum of NN output: {sum_nn} kWh",f"Sum of Lable: {sum_lable} kWh")
     
 
@@ -106,7 +109,7 @@ def inference_mlp(date:str,default_date:str):
     time_points = pd.date_range(start="00:00", end="23:55", freq="5min")
     plt.figure(figsize=(10,5))
     plt.scatter(time_points,np_output, label='NN Output', color='red', marker='o')  
-    plt.scatter(time_points,lable, label='Label Data', color='green', marker='o')  
+    plt.scatter(time_points,label, label='Label Data', color='green', marker='o')  
 
     plt.title('Neural Network Output and Label Data Overlay')
     plt.xlabel('Sample Index')
@@ -156,15 +159,13 @@ def inference_lstm(date:str,default_date:str):
         print("Could not get weather")
         exit(1)
     train_data = Dataloader("/data",Coordinates(float(os.environ["Lat"]),float(os.environ["Long"]))).load()
-    lable = None
-    for datapoint in train_data:
-        if str(datapoint.df.get_column("Date")[0]) == date:
-            lable  = datapoint.to_lable_normalized_hours_accurate()
-            # concat the individual tensors to one root tensor to be abled to plot it
-            lable = lable.flatten()
-    if lable == None:
-        print("No lable found")
+    seasonal_data = split_dfs_by_season(train_data)
+    seasonal_data.normalize_seasons()
+    data_for_date = seasonal_data.get_data_by_date(date)
+    if data_for_date == None:
+        print("Date not found in data")
         exit()
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     input = weather.weather_to_feature_vec().to(device)
@@ -189,7 +190,7 @@ def inference_lstm(date:str,default_date:str):
 
     np_output = rolling_mean_padded.cpu().detach().numpy()
     sum_nn =   (np_output * 0.0833).sum() 
-    sum_lable =   (lable * 0.0833).sum() 
+    sum_lable =   (data_for_date.to_lable_normalized_smoothed_and_hours_accurate().flatten() * 0.0833).sum() 
     print(f"Sum of NN output: {sum_nn} kWh",f"Sum of Lable: {sum_lable} kWh")
     
 
@@ -197,7 +198,7 @@ def inference_lstm(date:str,default_date:str):
     time_points = pd.date_range(start="00:00", end="23:55", freq="5min")
     plt.figure(figsize=(10,5))
     plt.scatter(time_points,np_output, label='NN Output', color='red', marker='o')  
-    plt.scatter(time_points,lable, label='Label Data', color='green', marker='o')  
+    plt.scatter(time_points,data_for_date.to_lable_normalized_smoothed_and_hours_accurate().flatten(), label='Label Data', color='green', marker='o')  
 
     plt.title('Neural Network Output and Label Data Overlay')
     plt.xlabel('Sample Index')
@@ -210,7 +211,7 @@ def inference_lstm(date:str,default_date:str):
 # once the model works, i will add a real and abstraced version of a inference function/ class that can be used to acutally run the model and execute predictions once the model has the required accuracy
 if __name__ == "__main__":
     dotenv.load_dotenv()
-    default_date = "2024-03-12"
+    default_date = "2024-08-12"
     print(f"Please provide a date in the following format: YYYY-MM-DD, Default is {default_date}")
     date = input()
     inference_lstm(date,default_date)
