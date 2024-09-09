@@ -38,8 +38,40 @@ class DataframeWithWeatherAsDict():
     def weather_to_feature_vec(self)->Tensor:
         weather_dict = []
 
+        # calculating day of the season
         date_object = datetime.strptime(self.weather["daily"]["time"][0], "%Y-%m-%d")
-        day_of_year = date_object.timetuple().tm_yday
+        day_of_season = 0
+        if date_object.month in [12,1,2]:
+            if date_object.month == 12:
+                day_of_season = date_object.day
+            elif date_object.month == 1:
+                day_of_season = date_object.day + 31 
+            elif date_object.month == 2:
+                day_of_season = date_object.day + 31 + 31
+        elif date_object.month in [3,4,5]:
+            if date_object.month == 3:
+                day_of_season = date_object.day 
+            elif date_object.month == 4:
+                day_of_season = date_object.day + 31
+            elif date_object.month == 5:
+                day_of_season = date_object.day + 31 + 30
+        elif date_object.month in [6,7,8]:
+            if date_object.month == 6:
+                day_of_season = date_object.day
+            elif date_object.month == 7:
+                day_of_season = date_object.day  + 30
+            elif date_object.month == 8:
+                day_of_season = date_object.day + 30 + 31
+
+        elif date_object.month in [9,10,11]:
+            if date_object.month == 9:
+                day_of_season = date_object.day 
+            elif date_object.month == 10:
+                day_of_season = date_object.day  + 30
+            elif date_object.month == 11:
+                day_of_season = date_object.day  + 30 + 31
+        # removing this for now. lets see what this does
+        #day_of_year = date_object.timetuple().tm_yday
         hour = self.weather["hourly"]
         for i in range(0,24):
             temp_2m = hour["temperature_2m"][i]
@@ -57,7 +89,7 @@ class DataframeWithWeatherAsDict():
                 irradiance = 0
                 humidity = 0
                 wind_speed= 0
-            weather_dict.append([day_of_year,float(temp_2m),float(percipitation),float(cloud_cover),float(sunshine_duration),float(irradiance),float(wind_speed),float(humidity)])
+            weather_dict.append([day_of_season,float(temp_2m),float(percipitation),float(cloud_cover),float(sunshine_duration),float(irradiance),float(wind_speed),float(humidity)])
         return torch.Tensor(weather_dict)
 
    
@@ -193,7 +225,7 @@ class Dataloader():
 
     def smooth_graph(self,df :pl.DataFrame)->pl.DataFrame:
         df_moving_mean = df.with_columns(
-            pl.col("Stromerzeugung [kW]").rolling_mean(window_size=12).fill_nan(0).fill_null(0).alias("Stromerzeugung smoothed")
+            pl.col("Stromerzeugung [kW]").rolling_mean(window_size=20).fill_nan(0).fill_null(0).alias("Stromerzeugung smoothed")
         )
         return  df_moving_mean
 

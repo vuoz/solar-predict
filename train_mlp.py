@@ -63,7 +63,7 @@ def train(model:Model,device, data:list[DataframeWithWeatherAsDict],name:str,que
         loss_test.append(avg_test_loss)
         if avg_test_loss > last_test_loss:
             no_improvement += 1
-        if no_improvement > 50:
+        if no_improvement > 20:
             break
         last_test_loss = avg_test_loss
 

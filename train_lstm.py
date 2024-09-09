@@ -21,6 +21,8 @@ def train_lstm(model:LstmModel,device, data:list[DataframeWithWeatherAsDict],nam
 
     print(f"Starting Training {name} ")
     loss_values = []
+    last_test_loss = 0.0
+    no_improvement = 0
     for epoch in range(epochs):
         epoch_loss = 0.0
         model.train()
@@ -66,6 +68,11 @@ def train_lstm(model:LstmModel,device, data:list[DataframeWithWeatherAsDict],nam
                     loss = criterion(out,label.float())
                     day_loss += loss.item()
                 test_loss += day_loss / 12
+        if last_test_loss > last_test_loss:
+            no_improvement += 1
+        if no_improvement > 20:
+            break
+        last_test_loss = test_loss
 
 
 
@@ -94,7 +101,7 @@ if __name__ == "__main__":
     for season in seasonal_data_list:
         model = LstmModel()
         model.to(device)
-        p = mp.Process(target=train_lstm, args=(model,device,season[0],season[1],res_queue,1000,0.0001))
+        p = mp.Process(target=train_lstm, args=(model,device,season[0],season[1],res_queue,75,0.001))
         p.start()
         processes.append(p)
 
