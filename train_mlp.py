@@ -92,7 +92,7 @@ if __name__ == "__main__":
     processes = []
     res_queue = mp.Queue()
     for season in seasonal_data_list:
-        model = Model(24*8)
+        model = Model(24*13)
         model.to(device)
         p = mp.Process(target=train, args=(model,device,season[0],f"models/{season[1]}",res_queue,200,0.00001))
         p.start()

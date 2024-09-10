@@ -23,7 +23,7 @@ def get_weather_data(day:str,cords:Coordinates,historical:bool)->tuple[Dataframe
 	        "longitude": cords.longitude,
 	        "start_date": day,
 	        "end_date": day,
-	        "hourly": ["temperature_2m", "precipitation", "cloud_cover", "sunshine_duration","global_tilted_irradiance","relative_humidity_2m", "wind_speed_10m"],
+            "hourly": ["temperature_2m", "relative_humidity_2m", "precipitation", "cloud_cover", "wind_speed_10m", "sunshine_duration", "diffuse_radiation", "direct_normal_irradiance", "global_tilted_irradiance", "diffuse_radiation_instant", "direct_normal_irradiance_instant", "global_tilted_irradiance_instant"],
 	        "daily": ["sunrise", "sunset", "sunshine_duration"],
 	        "timezone": "Europe/Berlin"
         }
@@ -57,7 +57,7 @@ def inference_mlp(date:str,default_date:str):
     print(f"Using model: {model_pth}")
 
 
-    model = Model(input_size=24*8)
+    model = Model(input_size=24*13)
     model.load_state_dict(torch.load(model_pth))
 
     date_to_check = datetime.strptime(date,"%Y-%m-%d")
@@ -68,6 +68,7 @@ def inference_mlp(date:str,default_date:str):
     else:
         historical = False
  
+    # need to normalized this. to the same scale as in training
     weather,err = get_weather_data(date,Coordinates(float(os.environ["Lat"]),float(os.environ["Long"])),historical)
     if err != None:
         print(err)
@@ -75,6 +76,7 @@ def inference_mlp(date:str,default_date:str):
     if weather == None:
         print("Could not get weather")
         exit()
+
     train_data = Dataloader("/data",Coordinates(float(os.environ["Lat"]),float(os.environ["Long"]))).load()
     seasons = split_dfs_by_season(train_data)
     seasons.normalize_seasons()
@@ -88,6 +90,8 @@ def inference_mlp(date:str,default_date:str):
     label = data.to_lable_normalized_and_smoothed()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
+    weather = None
+    weather = data
     input = weather.weather_to_feature_vec().to(device).flatten()
     output = model(input)
     output_tensor = torch.Tensor(output).to(device)
@@ -151,6 +155,7 @@ def inference_lstm(date:str,default_date:str):
         historical = True
     else:
         historical = False
+
     weather,err = get_weather_data(date,Coordinates(float(os.environ["Lat"]),float(os.environ["Long"])),historical)
     if err != None:
         print(err)
@@ -158,6 +163,7 @@ def inference_lstm(date:str,default_date:str):
     if weather == None:
         print("Could not get weather")
         exit(1)
+    # still need to normalized the values
     train_data = Dataloader("/data",Coordinates(float(os.environ["Lat"]),float(os.environ["Long"]))).load()
     seasonal_data = split_dfs_by_season(train_data)
     seasonal_data.normalize_seasons()
@@ -168,7 +174,9 @@ def inference_lstm(date:str,default_date:str):
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
+    weather = data_for_date
     input = weather.weather_to_feature_vec().to(device)
+    print(input)
     output_tensor = torch.Tensor().to(device)
     prev_out = torch.Tensor([0,0,0,0,0,0,0,0,0,0,0,0])
     for i,hour in enumerate(input):
@@ -211,8 +219,8 @@ def inference_lstm(date:str,default_date:str):
 # once the model works, i will add a real and abstraced version of a inference function/ class that can be used to acutally run the model and execute predictions once the model has the required accuracy
 if __name__ == "__main__":
     dotenv.load_dotenv()
-    default_date = "2024-08-12"
+    default_date = "2024-05-12"
     print(f"Please provide a date in the following format: YYYY-MM-DD, Default is {default_date}")
     date = input()
-    inference_lstm(date,default_date)
+    inference_mlp(date,default_date)
 

@@ -5,6 +5,7 @@ import polars as pl;
 import requests;
 from dataclasses import dataclass;
 from datetime import datetime
+import numpy as np
 import torch;
 from torch import Tensor;
 from customTypes import WeatherData;
@@ -81,7 +82,14 @@ class DataframeWithWeatherAsDict():
             irradiance = hour["global_tilted_irradiance"][i]
             wind_speed = hour["wind_speed_10m"][i]
             humidity = hour["relative_humidity_2m"][i]
-            if temp_2m == None or percipitation == None or cloud_cover == None or sunshine_duration == None or irradiance == None or wind_speed == None or humidity == None:
+            diffuse_radiation = hour["diffuse_radiation"][i]
+            direct_normal_irradiance = hour["direct_normal_irradiance"][i]
+            diffuse_radiation_instant = hour["diffuse_radiation_instant"][i]
+            direct_normal_irradiance_instant = hour["direct_normal_irradiance_instant"][i]
+            global_tilted_instant = hour["global_tilted_irradiance_instant"][i]
+
+
+            if temp_2m == None or percipitation == None or cloud_cover == None or sunshine_duration == None or irradiance == None or wind_speed == None or humidity == None or diffuse_radiation == None or direct_normal_irradiance == None or diffuse_radiation_instant == None or direct_normal_irradiance_instant == None or global_tilted_instant == None:
                 temp_2m = 0
                 percipitation = 0
                 cloud_cover = 0
@@ -89,7 +97,7 @@ class DataframeWithWeatherAsDict():
                 irradiance = 0
                 humidity = 0
                 wind_speed= 0
-            weather_dict.append([day_of_season,float(temp_2m),float(percipitation),float(cloud_cover),float(sunshine_duration),float(irradiance),float(wind_speed),float(humidity)])
+            weather_dict.append([day_of_season,float(temp_2m),float(percipitation),float(cloud_cover),float(sunshine_duration),float(irradiance),float(wind_speed),float(humidity),float(diffuse_radiation),float(direct_normal_irradiance),float(diffuse_radiation_instant),float(direct_normal_irradiance_instant),float(global_tilted_instant)])
         return torch.Tensor(weather_dict)
 
    
@@ -196,7 +204,7 @@ class DataframesWithWeatherSortedBySeason():
     winter: list[DataframeWithWeatherAsDict]
     autumn: list[DataframeWithWeatherAsDict]
     def normalize_seasons(self):
-        def inner(dfs:list[DataframeWithWeatherAsDict])->list[DataframeWithWeatherAsDict]:
+        def normalize_production_values(dfs:list[DataframeWithWeatherAsDict])->list[DataframeWithWeatherAsDict]:
             list_weather = [df.weather for df in dfs]
             dfs_only = [df.df for df in dfs]
             combined_df = pl.concat(dfs_only)
@@ -219,10 +227,81 @@ class DataframesWithWeatherSortedBySeason():
             for df in df_finished:
                 df.smooth_graph()
             return df_finished
-        self.spring = inner(self.spring) 
-        self.summer = inner(self.summer)
-        self.winter = inner(self.winter)
-        self.autumn = inner(self.autumn)
+        def normalize_weather_data(input):
+            def min_max_normalize(values:list[float],max:float,min:float):
+                return [0 if x is None else (x - min) / (max-min) for x in values]
+
+
+            def compute_min_max_feature(values)->tuple[float,float]:
+                min_val = np.min(values)
+                max_val = np.max(values)
+                return  (min_val,max_val)
+            def normalize_all_for_season(dfs_with_weather:list[DataframeWithWeatherAsDict])->list[DataframeWithWeatherAsDict]:
+
+                precipitation_values = [float(x) for day in dfs_with_weather for x in day.weather["hourly"]["precipitation"] if x is not None]
+                temp_values = [float(x) for day in dfs_with_weather for x in day.weather["hourly"]["temperature_2m"] if x is not None]
+                cloud_values = [float(x) for day in dfs_with_weather for x in day.weather["hourly"]["cloud_cover"] if x is not None]
+                wind_values = [float(x) for day in dfs_with_weather for x in day.weather["hourly"]["wind_speed_10m"] if x is not None]
+                irradiance_values = [float(x) for day in dfs_with_weather for x in day.weather["hourly"]["global_tilted_irradiance"] if x is not None]
+                humidity_values = [float(x) for day in dfs_with_weather for x in day.weather["hourly"]["relative_humidity_2m"] if x is not None]
+                diffuse_radiation_values = [float(x) for day in dfs_with_weather for x in day.weather["hourly"]["diffuse_radiation"] if x is not None]
+                direct_normal_irradiance_values = [float(x) for day in dfs_with_weather for x in day.weather["hourly"]["direct_normal_irradiance"] if x is not None]
+                diffuse_radiation_instant = [float(x) for day in dfs_with_weather for x in day.weather["hourly"]["diffuse_radiation_instant"] if x is not None]
+                diffuse_radiation_instant = [float(x) for day in dfs_with_weather for x in day.weather["hourly"]["diffuse_radiation_instant"] if x is not None]
+                direct_normal_irradiance_instant = [float(x) for day in dfs_with_weather for x in day.weather["hourly"]["direct_normal_irradiance_instant"] if x is not None]
+                global_tilted_instant = [float(x) for day in dfs_with_weather for x in day.weather["hourly"]["global_tilted_irradiance_instant"] if x is not None]
+
+                (min_percipitation,max_percipitation) = compute_min_max_feature(precipitation_values)
+                (min_temp_2m,max_temp_2m) = compute_min_max_feature(temp_values)
+                (min_cc,max_cc) = compute_min_max_feature(cloud_values)
+                (min_irradiance,max_irradiance) = compute_min_max_feature(irradiance_values)
+                (min_wind_speed,max_wind_speed) = compute_min_max_feature(wind_values)
+                (min_humidity,max_humidity) = compute_min_max_feature(humidity_values)
+                (min_diffuse_radiation,max_diffuse_radiation) = compute_min_max_feature(diffuse_radiation_values)
+                (min_direct_normal_irradiance,max_direct_normal_irradiance) = compute_min_max_feature(direct_normal_irradiance_values)
+                (min_diffuse_radiation_instant,max_diffuse_radiation_instant) = compute_min_max_feature(diffuse_radiation_instant)
+                (min_direct_normal_irradiance_instant,max_direct_normal_irradiance_instant) = compute_min_max_feature(direct_normal_irradiance_instant)
+                (min_global_tilted_instant,max_global_tilted_instant) = compute_min_max_feature(global_tilted_instant)
+
+                for day in dfs_with_weather:
+                    percipitation_normalized = min_max_normalize([x for x in day.weather["hourly"]["precipitation"]],max_percipitation,min_percipitation)
+                    temp_2m_normalized = min_max_normalize([x for x in day.weather["hourly"]["temperature_2m"]],max_temp_2m,min_temp_2m)
+                    cc_normalized = min_max_normalize([x for x in day.weather["hourly"]["cloud_cover"]],max_cc,min_cc)
+                    irradiance_normalized = min_max_normalize([x for x in day.weather["hourly"]["global_tilted_irradiance"]],max_irradiance,min_irradiance)
+                    wind_normalized = min_max_normalize([x for x in day.weather["hourly"]["wind_speed_10m"]],max_wind_speed,min_wind_speed)
+                    humidity_normalized = min_max_normalize([x for x in day.weather["hourly"]["wind_speed_10m"]],max_humidity,min_humidity)
+                    diffuse_radiation_normalized = min_max_normalize([x for x in day.weather["hourly"]["diffuse_radiation"]],max_diffuse_radiation,min_diffuse_radiation)
+                    direct_normal_irradiance_normalized = min_max_normalize([x for x in day.weather["hourly"]["direct_normal_irradiance"]],max_direct_normal_irradiance,min_direct_normal_irradiance)
+                    diffuse_radiation_instant_normalized = min_max_normalize([x for x in day.weather["hourly"]["diffuse_radiation_instant"]],max_diffuse_radiation_instant,min_diffuse_radiation_instant)
+                    direct_normal_irradiance_instant_normalized = min_max_normalize([x for x in day.weather["hourly"]["direct_normal_irradiance_instant"]],max_direct_normal_irradiance_instant,min_direct_normal_irradiance_instant)
+                    global_tilted_instant_normalized = min_max_normalize([x for x in day.weather["hourly"]["global_tilted_irradiance_instant"]],max_global_tilted_instant,min_global_tilted_instant)
+
+
+                    day.weather["hourly"]["precipitation"] = percipitation_normalized
+                    day.weather["hourly"]["temperature_2m"] = temp_2m_normalized
+                    day.weather["hourly"]["cloud_cover"] = cc_normalized
+                    day.weather["hourly"]["global_tilted_irradiance"] = irradiance_normalized
+                    day.weather["hourly"]["wind_speed_10m"] = wind_normalized
+                    day.weather["hourly"]["humidity"] = humidity_normalized
+                    day.weather["hourly"]["diffuse_radiation"] = diffuse_radiation_normalized
+                    day.weather["hourly"]["direct_normal_irradiance"] = direct_normal_irradiance_normalized
+                    day.weather["hourly"]["diffuse_radiation_instant"] = diffuse_radiation_instant_normalized
+                    day.weather["hourly"]["direct_normal_irradiance_instant"] = direct_normal_irradiance_instant_normalized
+                    day.weather["hourly"]["global_tilted_irradiance_instant"] = global_tilted_instant_normalized
+
+                return dfs_with_weather
+            input.spring = normalize_all_for_season(input.spring)
+            input.autumn = normalize_all_for_season(input.autumn)
+            input.summer = normalize_all_for_season(input.summer)
+            input.winter = normalize_all_for_season(input.winter)
+            return 
+
+        self.spring = normalize_production_values(self.spring) 
+        self.summer = normalize_production_values(self.summer)
+        self.winter = normalize_production_values(self.winter)
+        self.autumn = normalize_production_values(self.autumn)
+        self = normalize_weather_data(self)
+        return
     def get_data_by_date(self,date)->DataframeWithWeatherAsDict| None:
         date_parsed = datetime.strptime(date,"%Y-%m-%d")
         if date_parsed.month in [12,1,2]:
@@ -360,7 +439,7 @@ class Dataloader():
 	        "longitude": self.coords.longitude,
 	        "start_date": date_start,
 	        "end_date": date_end,
-	        "hourly": ["temperature_2m", "precipitation", "cloud_cover", "sunshine_duration","global_tilted_irradiance","relative_humidity_2m", "wind_speed_10m"],
+            "hourly": ["temperature_2m", "relative_humidity_2m", "precipitation", "cloud_cover", "wind_speed_10m", "sunshine_duration", "diffuse_radiation", "direct_normal_irradiance", "global_tilted_irradiance", "diffuse_radiation_instant", "direct_normal_irradiance_instant", "global_tilted_irradiance_instant"],
 	        "daily": ["sunrise", "sunset", "sunshine_duration"],
 	        "timezone": "Europe/Berlin"
         }
