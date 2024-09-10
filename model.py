@@ -70,6 +70,11 @@ class LstmModel(nn.Module):
         super(LstmModel,self).__init__()
         self.lstm_1 = nn.LSTM(input_size=25,hidden_size=128, batch_first=True)
         self.lstm_2 = nn.LSTM(input_size=128,hidden_size=256, batch_first=True)
+        self.lstm_3 = nn.LSTM(input_size=256,hidden_size=512, batch_first=True)
+
+        self.fc_0 = nn.Linear(512, 256)
+        self.relu_0 = nn.ReLU()
+
         self.fc_1 = nn.Linear(256, 128)
         self.relu_1 = nn.ReLU()
 
@@ -87,6 +92,9 @@ class LstmModel(nn.Module):
         combined = combined.unsqueeze(0)
         lstm_1_out,(_,_) = self.lstm_1(combined)
         lstm_2_out,(_,_) = self.lstm_2(lstm_1_out)
+        lstm_3_out,(_,_) = self.lstm_3(lstm_2_out)
+
+        fc_out = self.relu_0(self.fc_0(lstm_3_out))
         fc_out = self.relu_1(self.fc_1(lstm_2_out))
         fc_out = self.relu_2(self.fc_2(fc_out))         
         output = self.relu_3(self.fc_3(fc_out))
@@ -95,4 +103,14 @@ class LstmModel(nn.Module):
         output = output.squeeze(0)
         output = output.squeeze(0)
         return output   
+    def  reset_state_lstm(self):
+        self.hidden_state_1 = (
+            torch.zeros(1, 1, 128),  
+            torch.zeros(1, 1, 128)
+        )
+        self.hidden_state_2 = (
+            torch.zeros(1, 1, 256), 
+            torch.zeros(1, 1, 256)
+        )
+
 

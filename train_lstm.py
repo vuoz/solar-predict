@@ -48,6 +48,7 @@ def train_lstm(model:LstmModel,device, data:list[DataframeWithWeatherAsDict],nam
                 loss.backward()
                 optimizer.step()
                 day_loss += loss.item() 
+            model.reset_state_lstm()
 
             epoch_loss += day_loss / 12  # Average loss over the 12 time steps
             loss_values.append(day_loss / 12)
@@ -104,7 +105,7 @@ if __name__ == "__main__":
     for season in seasonal_data_list:
         model = LstmModel()
         model.to(device)
-        p = mp.Process(target=train_lstm, args=(model,device,season[0],season[1],res_queue,2000,0.001))
+        p = mp.Process(target=train_lstm, args=(model,device,season[0],season[1],res_queue,4000,0.001))
         p.start()
         processes.append(p)
 
