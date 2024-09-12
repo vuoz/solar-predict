@@ -7,11 +7,12 @@ from dataloader import DataframeWithWeatherAsDict
 import os
 import torch.multiprocessing as mp
 import queue
+import numpy as np
 import matplotlib.pyplot as plt
 
 # very simple training loop with a train and test split
 def train(model:Model,device, data:list[DataframeWithWeatherAsDict],name:str,queue,epochs=100,lr=0.001):
-    train_size = int(0.9 * len(data))
+    train_size = int(0.95 * len(data))
     data_train = data[:train_size]
     data_test = data[train_size:]
 
@@ -19,7 +20,6 @@ def train(model:Model,device, data:list[DataframeWithWeatherAsDict],name:str,que
     loss_train = []
     loss_test = []
 
-    #optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr,weight_decay=1e-4)
     criterion = nn.MSELoss()
     last_test_loss = 0
@@ -31,7 +31,6 @@ def train(model:Model,device, data:list[DataframeWithWeatherAsDict],name:str,que
         for day in data_train:
             
             inputs = day.weather_to_feature_vec().to(device)
-            #lable = day.df_to_lable_normalized().to(device)
 
             lable = day.to_lable_normalized_and_smoothed().to(device)
             # this input flattening might cause potential accuracy loss
@@ -69,8 +68,10 @@ def train(model:Model,device, data:list[DataframeWithWeatherAsDict],name:str,que
         if no_improvement > 20:
             break
         last_test_loss = avg_test_loss
+        train_loss_percent = np.sqrt(running_loss / len(data)) * 100
+        test_loss_percent = np.sqrt(avg_test_loss) * 100
 
-        print(f'Name:{name} Epoch {epoch+1}, Train Loss: {running_loss / len(data)}, Test Loss: {avg_test_loss}')
+        print(f'Name:{name} Epoch {epoch+1}, Train Loss : {np.round(train_loss_percent,2)}%, Test Loss : {np.round(test_loss_percent,2)}%.')
 
     torch.save(model.state_dict(), f"{name}.pth")
     queue.put((name,loss_train,loss_test))
