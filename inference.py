@@ -260,15 +260,10 @@ def inference_lstm(date:str,default_date:str):
     model.to(device)
     weather = data_for_date
     input = weather.weather_to_feature_vec().to(device)
-    print(input)
-    output_tensor = torch.Tensor().to(device)
-    prev_out = torch.Tensor([0,0,0,0,0,0,0,0,0,0,0,0])
-    for hour in input:
-        output_hour = model(hour.to(device),prev_out.to(device))   
-        prev_out = output_hour
-        output_tensor = torch.cat((output_tensor.to(device),output_hour.to(device)),dim=0)
+    output_tensor = model(input)
+  
     # applying rolling mean to nn output to smooth the curve
-    windows = output_tensor.unfold(dimension=0, size=12, step=1).to(device)
+    windows = output_tensor.flatten().unfold(dimension=0, size=12, step=1).to(device)
     rolling_mean = windows.mean(dim=1)
     padding_value = rolling_mean[0].item()
     padding = torch.full((11,),padding_value).to(device)
@@ -281,7 +276,7 @@ def inference_lstm(date:str,default_date:str):
     print(f"Sum of NN output: {sum_nn} kWh",f"Sum of Lable: {sum_lable} kWh")
 
     label_broadcasted = reverse_min_max(data_for_date.to_lable_normalized_smoothed_and_hours_accurate().flatten(),scaling_values.power_production[0],scaling_values.power_production[1])
-    nn_output_broadcasted = reverse_min_max(output_tensor,scaling_values.power_production[0],scaling_values.power_production[1])
+    nn_output_broadcasted = reverse_min_max(rolling_mean_padded,scaling_values.power_production[0],scaling_values.power_production[1])
     nn_out_broadcasted = torch.tensor(nn_output_broadcasted)
     label_broadcasted = torch.tensor(label_broadcasted)
     
@@ -303,8 +298,7 @@ def inference_lstm(date:str,default_date:str):
 # once the model works, i will add a real and abstraced version of a inference function/ class that can be used to acutally run the model and execute predictions once the model has the required accuracy
 if __name__ == "__main__":
     dotenv.load_dotenv()
-    default_date = "2024-05-05"
+    default_date = "2024-06-05"
     print(f"Please provide a date in the following format: YYYY-MM-DD, Default is {default_date}")
     date = input()
-    inference_lstm(date,default_date)
-
+    inference_mlp(date,default_date)

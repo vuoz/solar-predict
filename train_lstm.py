@@ -27,81 +27,47 @@ def train_lstm(model:LstmModel,device, data:list[DataframeWithWeatherAsDict],nam
     train_size = int(0.9* len(data))
     train_set = data[:train_size]
     test_set = data[train_size:]
-    # trying to do batching to make training more efficient
-    '''
-    also want to add a bigger window size that the model can use to predict the next timestep
-    train_data_batching_ready = [(day.weather_to_feature_vec(),day.to_lable_normalized_smoothed_and_hours_accurate()) for day in data]
-    dataset = batch_data(train_data_batching_ready,2)
-    '''
+
+    train_data_batching_ready = [(day.weather_to_feature_vec(),day.to_lable_normalized_smoothed_and_hours_accurate()) for day in train_set]
+    dataset = batch_data(train_data_batching_ready,10)
+    test_data_batching_ready = [(day.weather_to_feature_vec(),day.to_lable_normalized_smoothed_and_hours_accurate()) for day in test_set]
+    dataset_test = batch_data(test_data_batching_ready,1)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = nn.MSELoss()
-    scheduled_sampling_prob:float = 5/10
     
 
     print(f"Starting Training {name} ")
     loss_values = []
     test_loss_values = []
-    last_test_loss = 0.0
+    last_test_loss = 0
     no_improvement = 0
     for epoch in range(epochs):
         epoch_loss = 0.0
+        epoch_test_loss = 0.0
         model.train()
-        
+        for ( x,y) in dataset:
+            out = model(x.to(device))
+            loss = criterion(out,y.to(device))
+            loss.backward()
 
-        for day in train_set:
-            day_loss = 0.0
-            inputs = day.weather_to_feature_vec().to(device)
-            labels = day.to_lable_normalized_smoothed_and_hours_accurate().to(device)
-            prev_out = torch.Tensor([0,0,0,0,0,0,0,0,0,0,0,0])
-            for (input,lable) in zip(inputs,labels):
-                out = model(input.to(device).float(),prev_out.to(device).float())
-
-                # trying out using the models output as next input to make it more independent and actually reliable in inference mode when there is no true data to hand
-                # when in teacher mode prev_out would be set to label
-                if random.random() < scheduled_sampling_prob:
-                    prev_out = lable
-                else:
-                    prev_out = out.detach()
-
-                loss = criterion(out,lable.float())
-                optimizer.zero_grad()    
-                loss.backward()
-                optimizer.step()
-                day_loss += loss.item() 
-            #model.reset_state_lstm()
-
-            epoch_loss += day_loss / 12 
-
-
-        test_loss = 0.0
+            optimizer.step()
+            epoch_loss += loss.item()
 
         with torch.no_grad():
-            for day in test_set:
-                inputs = day.weather_to_feature_vec().to(device)
-                label = day.to_lable_normalized_smoothed_and_hours_accurate().to(device)
-
-                day_loss = 0.0
-                prev_out = torch.Tensor([0,0,0,0,0,0,0,0,0,0,0,0])
-                for (input,label) in zip(inputs,label):
-
-                    out = model(input.to(device).float(),prev_out.to(device).float())
-                    prev_out = out                     
-                    loss = criterion(out,label.float())
-                    day_loss += loss.item()
-                test_loss += day_loss / 12
-        if test_loss > last_test_loss or last_test_loss ==test_loss :
+            for (x,y) in dataset_test:
+                out = model(x.to(device))
+                loss = criterion(out,y.to(device))
+                epoch_test_loss += loss.item()
+        train_loss_percent = np.sqrt(epoch_loss/len(dataset))*100
+        test_loss_percent = np.sqrt(epoch_test_loss/len(dataset_test))*100
+        if test_loss_percent > last_test_loss and  last_test_loss != 0 or test_loss_percent == last_test_loss:
             no_improvement += 1
-        if no_improvement > 5:
+        if no_improvement > 20:
             break
-        last_test_loss = test_loss
-        train_loss_percent = np.sqrt(epoch_loss / len(train_set)) * 100
-        test_loss_percent = np.sqrt(test_loss / len(test_set)) * 100
-
-        loss_values.append(train_loss_percent)
+        last_test_loss = test_loss_percent
         test_loss_values.append(test_loss_percent)
-
-
+        loss_values.append(train_loss_percent)
 
 
         print(f'{name} Epoch [{epoch+1}/{epochs}], Train Loss: {np.round(train_loss_percent,2)}% ,Test Loss: {np.round(test_loss_percent,2)}%')
@@ -130,7 +96,7 @@ if __name__ == "__main__":
     for season in seasonal_data_list:
         model = LstmModel()
         model.to(device)
-        p = mp.Process(target=train_lstm, args=(model,device,season[0],season[1],res_queue,20000,0.001))
+        p = mp.Process(target=train_lstm, args=(model,device,season[0],season[1],res_queue,2000,0.0001))
         p.start()
         processes.append(p)
 

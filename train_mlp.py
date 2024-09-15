@@ -61,9 +61,7 @@ def train(model:Model,device, data:list[DataframeWithWeatherAsDict],name:str,que
 
         avg_test_loss = test_loss / len(data_test)
 
-        loss_train.append(running_loss / len(data))
-        loss_test.append(avg_test_loss)
-        if avg_test_loss > last_test_loss:
+        if avg_test_loss > last_test_loss or avg_test_loss == last_test_loss:
             no_improvement += 1
         if no_improvement > 20:
             break
@@ -71,6 +69,9 @@ def train(model:Model,device, data:list[DataframeWithWeatherAsDict],name:str,que
         train_loss_percent = np.sqrt(running_loss / len(data)) * 100
         test_loss_percent = np.sqrt(avg_test_loss) * 100
 
+
+        loss_train.append(train_loss_percent)
+        loss_test.append(test_loss_percent)
         print(f'Name:{name} Epoch {epoch+1}, Train Loss : {np.round(train_loss_percent,2)}%, Test Loss : {np.round(test_loss_percent,2)}%.')
 
     torch.save(model.state_dict(), f"{name}.pth")
@@ -95,7 +96,7 @@ if __name__ == "__main__":
     for season in seasonal_data_list:
         model = Model(24*13)
         model.to(device)
-        p = mp.Process(target=train, args=(model,device,season[0],f"models/{season[1]}",res_queue,200,0.00001))
+        p = mp.Process(target=train, args=(model,device,season[0],f"models/{season[1]}",res_queue,150,0.00001))
         p.start()
         processes.append(p)
 
@@ -110,8 +111,8 @@ if __name__ == "__main__":
             break
     fig, axes = plt.subplots(2, 2, figsize=(10, 8))  # 2 rows, 2 columns
     for (ax,data) in zip(axes.flat,results):
-        ax.plot(data[1], label='Train Loss')
-        ax.plot(data[2], label='Test Loss')
+        ax.plot(data[1], label='Train Loss %')
+        ax.plot(data[2], label='Test Loss %')
         ax.set_title(f'{data[0]}')
         ax.set_xlabel('Epoch')
         ax.set_ylabel('Loss')
