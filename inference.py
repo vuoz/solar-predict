@@ -1,7 +1,7 @@
 import polars
 from scipy.sparse import data
 from customTypes import MinMaxWeather
-from model import Model,LstmModel
+from model import Model,LstmModel, TransformerModel
 import torch
 import requests
 from dataloader import Coordinates, DataframeWithWeatherAsDict,Dataloader, split_dfs_by_season,min_max_normalize;
@@ -62,8 +62,6 @@ def normalize_weather_create_inference_vec(min_max:MinMaxWeather,day)->torch.Ten
     day.weather["hourly"]["direct_normal_irradiance_instant"] = direct_normal_irradiance_instant_normalized
     day.weather["hourly"]["global_tilted_irradiance_instant"] = global_tilted_instant_normalized
     return day.weather_to_feature_vec()
-
-
 
 def inference_mlp(date:str,default_date:str):
     if date != "" and (len(date) != 10 or datetime.strptime(date,"%Y-%m-%d") == None):
@@ -159,11 +157,6 @@ def inference_mlp(date:str,default_date:str):
     padding = torch.full((11,),padding_value).to(device)
     rolling_mean_padded = torch.cat((padding,rolling_mean),dim=0).to(device)
 
-    np_output = rolling_mean_padded.cpu().detach().numpy()
-    sum_nn =   (np_output * 0.0833).sum() 
-    sum_lable =   (label * 0.0833).sum() 
-
-    print(f"Sum of NN output: {sum_nn} kWh",f"Sum of Lable: {sum_lable} kWh")
 
     label_broadcasted = reverse_min_max(label,scaling_values.power_production[0],scaling_values.power_production[1])
     nn_output_broadcasted = reverse_min_max(rolling_mean_padded,scaling_values.power_production[0],scaling_values.power_production[1])
@@ -172,6 +165,137 @@ def inference_mlp(date:str,default_date:str):
     
 
 
+    np_output = nn_out_broadcasted.cpu().detach().numpy()
+    sum_nn =   (np_output * 0.0833).sum() 
+    sum_lable =   (label_broadcasted.cpu().detach().numpy() * 0.0833).sum() 
+    print(f"Sum of NN output: {sum_nn} kWh",f"Sum of Lable: {sum_lable} kWh")
+    
+
+    #Plot the output in comparison to the lable for a specified day
+    time_points = pd.date_range(start="00:00", end="23:55", freq="5min")
+    plt.figure(figsize=(10,5))
+    plt.scatter(time_points,nn_out_broadcasted, label='NN Output', color='red', marker='o')  
+    plt.scatter(time_points,label_broadcasted, label='Label Data', color='green', marker='o')  
+
+    plt.title('Neural Network Output and Label Data Overlay')
+    plt.xlabel('Sample Index')
+    plt.ylabel('Energy Production [kW]')
+    plt.legend()
+    plt.show()
+
+
+
+def inference_transformer(date:str,default_date:str):
+    if date != "" and (len(date) != 10 or datetime.strptime(date,"%Y-%m-%d") == None):
+        print("Invalid date format")
+        exit(1)
+    if date == "":
+        date = default_date
+    model_pth = ""
+    season = ""
+    date_datetime = datetime.strptime(date,"%Y-%m-%d")
+    if date_datetime.month in [12,1,2]:
+        model_pth = "models/winter.pth"
+        season = "winter"
+    elif date_datetime.month in [3,4,5]:
+        model_pth = "models/spring.pth"
+        season = "spring"
+    elif date_datetime.month in [6,7,8]:
+        model_pth = "models/transformer_model.pth"
+        season = "summer"
+    elif date_datetime.month in [9,10,11]:
+        model_pth = "models/autumn.pth"
+        season = "autumn"
+    else:
+        print("Invalid date")
+        exit(1)
+
+    print(f"Using model: {model_pth}")
+
+
+    model = TransformerModel()
+    model.load_state_dict(torch.load(model_pth))
+
+    date_to_check = datetime.strptime(date,"%Y-%m-%d")
+    curr_date = datetime.now()
+    historical = False
+    if date_to_check < curr_date:
+        print("Using historical data")
+        historical = True
+    else:
+        historical = False
+ 
+    # need to normalized this. to the same scale as in training
+    weather,err = get_weather_data(date,Coordinates(float(os.environ["Lat"]),float(os.environ["Long"])),historical)
+    if err != None:
+        print(err)
+        exit()
+    if weather == None:
+        print("Could not get weather")
+        exit()
+
+    train_data = Dataloader("/data",Coordinates(float(os.environ["Lat"]),float(os.environ["Long"]))).load()
+    seasons = split_dfs_by_season(train_data)
+    min_max_seasons = seasons.normalize_seasons()
+    scaling_values = None
+    if season == "winter":
+        scaling_values = min_max_seasons.winter
+    elif season == "summer":
+        scaling_values = min_max_seasons.summer
+    elif season == "spring":
+        scaling_values = min_max_seasons.spring
+    elif season == "autumn":
+        scaling_values = min_max_seasons.autumn
+    if scaling_values == None:
+        print("Error determining season")
+        exit()
+
+
+    
+    
+
+    data = seasons.get_data_by_date(date)
+    if data == None:
+        print("Date not found in data")
+        exit()
+    label = data.to_lable_normalized_smoothed_and_hours_accurate().flatten()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    if weather == None:
+        print("Weather not found")
+        exit()
+
+    
+    input = normalize_weather_create_inference_vec(scaling_values,weather).to(device)
+    #input_training = data.weather_to_feature_vec().to(device).flatten()
+    input_tensor = torch.tensor(input, dtype=torch.float32).unsqueeze(0).to(device)
+    print(input_tensor.shape)
+    output = model(input_tensor)
+    print(output.shape)
+
+    output_tensor = output.squeeze(0)
+    print(output_tensor.shape)
+    output_tensor = output_tensor.flatten()
+
+    # applying rolling mean to nn output to smooth the curve
+    windows = output_tensor.unfold(dimension=0, size=12, step=1).to(device)
+    rolling_mean = windows.mean(dim=1)
+    padding_value = rolling_mean[0].item()
+    padding = torch.full((11,),padding_value).to(device)
+    rolling_mean_padded = torch.cat((padding,rolling_mean),dim=0).to(device)
+
+
+    label_broadcasted = reverse_min_max(label,scaling_values.power_production[0],scaling_values.power_production[1])
+    nn_output_broadcasted = reverse_min_max(rolling_mean_padded,scaling_values.power_production[0],scaling_values.power_production[1])
+    nn_out_broadcasted = torch.tensor(nn_output_broadcasted)
+    label_broadcasted = torch.tensor(label_broadcasted)
+    
+
+
+    np_output = nn_out_broadcasted.cpu().detach().numpy()
+    sum_nn =   (np_output * 0.0833).sum() 
+    sum_lable =   (label_broadcasted.cpu().detach().numpy() * 0.0833).sum() 
+    print(f"Sum of NN output: {sum_nn} kWh",f"Sum of Lable: {sum_lable} kWh")
     
 
     #Plot the output in comparison to the lable for a specified day
@@ -260,6 +384,8 @@ def inference_lstm(date:str,default_date:str):
     model.to(device)
     weather = data_for_date
     input = weather.weather_to_feature_vec().to(device)
+
+
     output_tensor = model(input)
   
     # applying rolling mean to nn output to smooth the curve
@@ -270,16 +396,17 @@ def inference_lstm(date:str,default_date:str):
     rolling_mean_padded = torch.cat((padding,rolling_mean),dim=0).to(device)
 
 
-    np_output = rolling_mean_padded.cpu().detach().numpy()
-    sum_nn =   (np_output * 0.0833).sum() 
-    sum_lable =   (data_for_date.to_lable_normalized_smoothed_and_hours_accurate().flatten() * 0.0833).sum() 
-    print(f"Sum of NN output: {sum_nn} kWh",f"Sum of Lable: {sum_lable} kWh")
 
     label_broadcasted = reverse_min_max(data_for_date.to_lable_normalized_smoothed_and_hours_accurate().flatten(),scaling_values.power_production[0],scaling_values.power_production[1])
     nn_output_broadcasted = reverse_min_max(rolling_mean_padded,scaling_values.power_production[0],scaling_values.power_production[1])
     nn_out_broadcasted = torch.tensor(nn_output_broadcasted)
     label_broadcasted = torch.tensor(label_broadcasted)
     
+
+    np_output = nn_out_broadcasted.cpu().detach().numpy()
+    sum_nn =   (np_output * 0.0833).sum() 
+    sum_lable =   (label_broadcasted.cpu().detach().numpy() * 0.0833).sum() 
+    print(f"Sum of NN output: {sum_nn} kWh",f"Sum of Lable: {sum_lable} kWh")
 
     #Plot the output in comparison to the lable for a specified day
     time_points = pd.date_range(start="00:00", end="23:55", freq="5min")
@@ -301,4 +428,4 @@ if __name__ == "__main__":
     default_date = "2024-06-05"
     print(f"Please provide a date in the following format: YYYY-MM-DD, Default is {default_date}")
     date = input()
-    inference_mlp(date,default_date)
+    inference_transformer(date,default_date)

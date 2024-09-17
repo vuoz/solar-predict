@@ -23,6 +23,87 @@ def batch_data(data:list[tuple[torch.Tensor,torch.Tensor]],batch_size):
     custom_dataset = CustomDataset(data)
     dataset = DataLoader(custom_dataset,batch_size,shuffle=True)
     return dataset
+def train_lstm_new(model:LstmModel,device, data:list[DataframeWithWeatherAsDict],name:str,epochs=50,lr=0.0001):
+
+    train_size = int(0.9* len(data))
+    train_set = data[:train_size]
+    test_set = data[train_size:]
+
+    train_data_batching_ready = [(day.weather_to_feature_vec(),day.to_lable_normalized_smoothed_and_hours_accurate()) for day in train_set]
+    dataset = batch_data(train_data_batching_ready,10)
+    test_data_batching_ready = [(day.weather_to_feature_vec(),day.to_lable_normalized_smoothed_and_hours_accurate()) for day in test_set]
+    dataset_test = batch_data(test_data_batching_ready,1)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    criterion = nn.MSELoss()
+
+    for epoch in range(epochs):
+        epoch_loss = 0.0
+
+
+        for x,y in dataset:
+            splits = torch.split(x,split_size_or_sections=1,dim=1)
+            splits_y = torch.split(y,split_size_or_sections=1,dim=1)
+            day_loss = 0.0
+            for (i,(_,split_y)) in enumerate(zip(splits,splits_y)):
+                optimizer.zero_grad()
+
+                third_to_last = splits[i-3]
+                second_to_last = splits[i-2]
+                past_out = splits_y[i-1]
+                past_window = torch.tensor([])
+                def reshape(x):
+                    return x.view(x.size(0), -1)
+                if third_to_last is not None:
+                    past_window = torch.cat((past_window,reshape(third_to_last)),dim=1)
+                else:
+                    past_window = torch.cat((past_window,reshape(torch.zeros(split_y.shape))),dim =1)
+                if second_to_last is not None:
+                    past_window = torch.cat((past_window,reshape(second_to_last)),dim=1)
+                else:
+                    past_window = torch.cat((past_window,reshape(torch.zeros(split_y.shape))),dim =1)
+                if past_out is not None:
+                    past_window = torch.cat((past_window,reshape(past_out)),dim =1)
+                else:
+                    past_window = torch.cat((past_window,reshape(torch.zeros(split_y.shape))),dim =1)
+
+
+                flattened_data = x.view(x.size(0), -1)
+
+                out = model(flattened_data.to(device),past_window.to(device))
+
+                loss = criterion(out,split_y.to(device).view(x.size(0),-1))
+                loss.backward()
+
+                optimizer.step()
+                day_loss += loss.item()
+                model.reset_lstm_state()
+            epoch_loss += day_loss / 24
+        epoch_loss = np.sqrt(epoch_loss/len(dataset))*100
+        print(f'{name} Epoch [{epoch+1}/{epochs}], Loss: {np.round(epoch_loss,2)}%')
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def train_lstm(model:LstmModel,device, data:list[DataframeWithWeatherAsDict],name:str,queue,epochs=100,lr=0.0001):
     train_size = int(0.9* len(data))
     train_set = data[:train_size]
