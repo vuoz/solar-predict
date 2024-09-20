@@ -26,3 +26,8 @@ python train_mlp.py # For the mlp based model
 ```python
 python inference.py
 ```
+
+### Info
+This was part of the submission for the team "solar-predict" in the bw-ki contest 2024
+Username: zxp
+

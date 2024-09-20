@@ -159,7 +159,8 @@ class DataframeWithWeatherAsDict():
             values_tensor = torch.Tensor(values)
             interpolated = interpolate_to_twelve(values_tensor)
             lable_tensor_list.append(interpolated)
-        return torch.stack(lable_tensor_list)
+        stacked = torch.stack(lable_tensor_list)
+        return stacked
      
  
 

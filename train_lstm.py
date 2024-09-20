@@ -41,24 +41,72 @@ def train_lstm_new(model:LstmModel,device, data:list[DataframeWithWeatherAsDict]
 
     last_test_loss = 0.0
     no_improvement = 0
+    model.train()
     for epoch in range(epochs):
         epoch_loss = 0.0
 
 
+
+        test_loss = 0.0
         for x,y in dataset:
             splits = torch.split(x,split_size_or_sections=1,dim=1)
             splits_y = torch.split(y,split_size_or_sections=1,dim=1)
+
             day_loss = 0.0
-            for (i,(_,split_y)) in enumerate(zip(splits,splits_y)):
+            for (i,(split_x,split_y)) in enumerate(zip(splits,splits_y)): 
                 optimizer.zero_grad()
 
-                # we create the past output window using the past 3 hours
+
+                # create the weather window
+                weather_window  = torch.tensor([])
+
+                fourth_to_last = splits[i-4]
                 third_to_last = splits[i-3]
                 second_to_last = splits[i-2]
+                previous = splits[i-1]
+                if fourth_to_last is not None:
+                    weather_window = torch.cat((weather_window,fourth_to_last),dim=1)
+                else:
+                    weather_window = torch.cat((weather_window,torch.zeros(split_x.shape)),dim=1)
+                if third_to_last is not None:
+                    weather_window = torch.cat((weather_window,third_to_last),dim=1)
+                else:
+                    weather_window = torch.cat((weather_window,torch.zeros(split_x.shape)),dim=1)
+                if second_to_last is not None:
+                    weather_window = torch.cat((weather_window,second_to_last),dim=1)
+                else:
+                    weather_window = torch.cat((weather_window,torch.zeros(split_x.shape)),dim=1)
+                if previous is not None:
+                    weather_window = torch.cat((weather_window,previous),dim=1)
+                else:
+                    weather_window = torch.cat((weather_window,torch.zeros(split_x.shape)),dim=1)
+                weather_window = torch.cat((weather_window,split_x),dim=1)
+
+                try:
+                    in_advance = splits[i+1].to(device)
+                    weather_window = torch.cat((weather_window.to(device),in_advance.to(device)),dim=1)
+                except IndexError:
+                    weather_window = torch.cat((weather_window.to(device),torch.zeros(split_x.shape).to(device)),dim=1)
+
+
+
+
+
+                # we create the past output window using the past 3 hours 
+                # during training we use the ground truth values 
+                # this would be called teacher forcing
+                fourth_to_last = splits_y[i-4]
+                third_to_last = splits_y[i-3]
+                second_to_last = splits_y[i-2]
                 past_out = splits_y[i-1]
+
                 past_window = torch.tensor([])
                 def reshape(x):
                     return x.view(x.size(0), -1)
+                if fourth_to_last is not None:
+                    past_window = torch.cat((past_window,reshape(fourth_to_last)),dim=1)
+                else:
+                    past_window = torch.cat((past_window,reshape(torch.zeros(split_y.shape))),dim =1)
                 if third_to_last is not None:
                     past_window = torch.cat((past_window,reshape(third_to_last)),dim=1)
                 else:
@@ -72,9 +120,8 @@ def train_lstm_new(model:LstmModel,device, data:list[DataframeWithWeatherAsDict]
                 else:
                     past_window = torch.cat((past_window,reshape(torch.zeros(split_y.shape))),dim =1)
 
-
                 # there is some reshaping to do
-                flattened_data = x.view(x.size(0), -1)
+                flattened_data = weather_window.view(weather_window.size(0), -1)
 
                 out = model(flattened_data.to(device),past_window.to(device))
 
@@ -88,44 +135,82 @@ def train_lstm_new(model:LstmModel,device, data:list[DataframeWithWeatherAsDict]
                 model.reset_lstm_state()
             epoch_loss += day_loss / 24
 
-            test_loss = 0.0
-            with torch.no_grad():
-                for x,y in dataset_test:
-                    splits = torch.split(x,split_size_or_sections=1,dim=1)
-                    splits_y = torch.split(y,split_size_or_sections=1,dim=1)
-                    day_loss = 0.0
-                    for (i,(_,split_y)) in enumerate(zip(splits,splits_y)):
+        with torch.no_grad():
+            for x,y in dataset_test:
+                splits = torch.split(x,split_size_or_sections=1,dim=1)
+                splits_y = torch.split(y,split_size_or_sections=1,dim=1)
+                day_loss = 0.0
+                for (i,(split_x,split_y)) in enumerate(zip(splits,splits_y)):
 
-                        # build the past 3 hour window
-                        third_to_last = splits[i-3]
-                        second_to_last = splits[i-2]
-                        past_out = splits_y[i-1]
-                        past_window = torch.tensor([])
-                        def reshape(x):
-                            return x.view(x.size(0), -1)
-                        if third_to_last is not None:
-                            past_window = torch.cat((past_window,reshape(third_to_last)),dim=1)
-                        else:
-                            past_window = torch.cat((past_window,reshape(torch.zeros(split_y.shape))),dim =1)
-                        if second_to_last is not None:
-                            past_window = torch.cat((past_window,reshape(second_to_last)),dim=1)
-                        else:
-                            past_window = torch.cat((past_window,reshape(torch.zeros(split_y.shape))),dim =1)
-                        if past_out is not None:
-                            past_window = torch.cat((past_window,reshape(past_out)),dim =1)
-                        else:
-                            past_window = torch.cat((past_window,reshape(torch.zeros(split_y.shape))),dim =1)
 
-                        # there is some reshaping to do
-                        flattened_data = x.view(x.size(0), -1)
+                    # create the weather window
+                    weather_window  = torch.tensor([])
+                    fourth_to_last = splits[i-4]
+                    third_to_last = splits[i-3]
+                    second_to_last = splits[i-2]
+                    previous = splits[i-1]
+                    if fourth_to_last is not None:
+                        weather_window = torch.cat((weather_window,fourth_to_last),dim=1)
+                    else:
+                        weather_window = torch.cat((weather_window,torch.zeros(split_x.shape)),dim=1)
+                    if third_to_last is not None:
+                        weather_window = torch.cat((weather_window,third_to_last),dim=1)
+                    else:
+                        weather_window = torch.cat((weather_window,torch.zeros(split_x.shape)),dim=1)
+                    if second_to_last is not None:
+                        weather_window = torch.cat((weather_window,second_to_last),dim=1)
+                    else:
+                        weather_window = torch.cat((weather_window,torch.zeros(split_x.shape)),dim=1)
+                    if previous is not None:
+                        weather_window = torch.cat((weather_window,previous),dim=1)
+                    else:
+                        weather_window = torch.cat((weather_window,torch.zeros(split_x.shape)),dim=1)
+                    weather_window = torch.cat((weather_window,split_x),dim=1)
 
-                        # run the model
-                        out  = model(flattened_data.to(device),past_window.to(device))
-                        
-                        # calculate loss 
-                        loss = criterion(out,split_y.to(device).view(x.size(0),-1))
-                        day_loss += loss.item()
-                    test_loss += day_loss / 24
+                    try:
+                        in_advance = splits[i+1]
+                        weather_window = torch.cat((weather_window.to(device),in_advance.to(device)),dim=1)    
+                    except IndexError:
+                        weather_window = torch.cat((weather_window.to(device),torch.zeros(split_x.shape).to(device)),dim=1)
+
+
+
+                    # build the past 3 hour window
+                    fourth_to_last = splits_y[i-4]
+                    third_to_last = splits_y[i-3]
+                    second_to_last = splits_y[i-2]
+                    past_out = splits_y[i-1]
+                    past_window = torch.tensor([])
+                    def reshape(x):
+                        return x.view(x.size(0), -1)
+                    if fourth_to_last is not None:
+                        past_window = torch.cat((past_window,reshape(fourth_to_last)),dim=1)
+                    else:
+                        past_window = torch.cat((past_window,torch.zeros(split_y.shape)),dim =1)
+                    if third_to_last is not None:
+                        past_window = torch.cat((past_window,reshape(third_to_last)),dim=1)
+                    else:
+                        past_window = torch.cat((past_window,reshape(torch.zeros(split_y.shape))),dim =1)
+                    if second_to_last is not None:
+                        past_window = torch.cat((past_window,reshape(second_to_last)),dim=1)
+                    else:
+                        past_window = torch.cat((past_window,reshape(torch.zeros(split_y.shape))),dim =1)
+                    if past_out is not None:
+                        past_window = torch.cat((past_window,reshape(past_out)),dim =1)
+                    else:
+                        past_window = torch.cat((past_window,reshape(torch.zeros(split_y.shape))),dim =1)
+
+                    # there is some reshaping to do
+                    flattened_data = weather_window.view(weather_window.size(0), -1)
+
+                    # run the model
+                    out  = model(flattened_data.to(device),past_window.to(device))
+
+                    # calculate loss 
+                    loss = criterion(out,split_y.to(device).view(x.size(0),-1))
+                    day_loss += loss.item()
+                test_loss += day_loss / 24
+                model.reset_lstm_state()
                         
             # calculate average test loss 
             test_loss = test_loss / len(dataset_test)
@@ -136,12 +221,12 @@ def train_lstm_new(model:LstmModel,device, data:list[DataframeWithWeatherAsDict]
             if last_test_loss < test_loss and last_test_loss != 0:
                 no_improvement += 1
                 continue
-            if no_improvement > 20:
+            if no_improvement > 10:
                 print(f"{name} Stopping training due to no further improvement")
                 break
 
         epoch_loss = np.sqrt(epoch_loss/len(dataset))*100
-        print(f'{name} Epoch [{epoch+1}/{epochs}], Loss: {np.round(epoch_loss,2)}%')
+        print(f'{name} Epoch [{epoch+1}/{epochs}], Loss: {np.round(epoch_loss,2)}%, Test Loss {np.round(test_loss,2)}%')
     torch.save(model.state_dict(), f"models/lstm_new_{name}.pth")
 
     

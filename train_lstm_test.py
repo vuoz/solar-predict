@@ -1,5 +1,5 @@
 import torch
-from dataloader import Dataloader, Coordinates,DataframeWithWeatherAsDict,split_dfs_by_season
+from dataloader import Dataloader, Coordinates,split_dfs_by_season
 import dotenv
 from model import LstmModel
 from train_lstm import train_lstm_new
@@ -23,7 +23,7 @@ if __name__ == "__main__":
     for season in seasonal_data_list:
         model = LstmModel()
         model.to(device)
-        p = mp.Process(target=train_lstm_new, args=(model,device,season[0],season[1],200,0.0001))
+        p = mp.Process(target=train_lstm_new, args=(model,device,season[0],season[1],10000,0.0001))
         p.start()
         processes.append(p)
 

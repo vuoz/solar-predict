@@ -1,5 +1,5 @@
 import polars
-from customTypes import MinMaxWeather
+from customTypes import MinMaxWeather, WeatherData
 from model import Model,LstmModel
 import torch
 import requests
@@ -193,16 +193,16 @@ def inference_lstm(date:str,default_date:str):
     season = ""
     date_datetime = datetime.strptime(date,"%Y-%m-%d")
     if date_datetime.month in [12,1,2]:
-        model_pth = "models/lstm_winter.pth"
+        model_pth = "models/lstm_new_winter.pth"
         season = "winter"
     elif date_datetime.month in [3,4,5]:
-        model_pth = "models/lstm_spring.pth"
+        model_pth = "models/lstm_new_spring.pth"
         season = "spring"
     elif date_datetime.month in [6,7,8]:
-        model_pth = "models/lstm_summer.pth"
+        model_pth = "models/lstm_new_summer.pth"
         season = "summer"
     elif date_datetime.month in [9,10,11]:
-        model_pth = "models/lstm_autumn.pth"
+        model_pth = "models/lstm_new_autumn.pth"
         season = "autumn"
     else:
         print("Invalid date")
@@ -256,31 +256,82 @@ def inference_lstm(date:str,default_date:str):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     weather = data_for_date
-    input = weather.weather_to_feature_vec().to(device).flatten()
+    input = weather.weather_to_feature_vec().to(device)
+    input_reshaped = input.unsqueeze(0)
 
+
+    splits = torch.split(input_reshaped.to(device),split_size_or_sections=1,dim=1)
     output_tensor = torch.Tensor().to(device)
     past_out = []
-    for i  in range(24):
-        third_to_last = past_out[i-3]
-        second_to_last = past_out[i-2]
+    for i,split_x  in enumerate(splits):
+
+
+
+        # create the weather window
+        weather_window  = torch.tensor([]).to(device)
+        fourth_to_last = splits[i-4].to(device)
+        third_to_last = splits[i-3].to(device)
+        second_to_last = splits[i-2].to(device)
+        previous = splits[i-1].to(device)
+        if fourth_to_last is not None:
+            weather_window = torch.cat((weather_window,fourth_to_last),dim=1)
+        else:
+            weather_window = torch.cat((weather_window,torch.zeros(split_x.shape).to(device)),dim=1)
+        if third_to_last is not None:
+            weather_window = torch.cat((weather_window,third_to_last),dim=1)
+        else:
+            weather_window = torch.cat((weather_window,torch.zeros(split_x.shape).to(device)),dim=1)
+        if second_to_last is not None:
+            weather_window = torch.cat((weather_window,second_to_last),dim=1)
+        else:
+            weather_window = torch.cat((weather_window,torch.zeros(split_x.shape).to(device)),dim=1)
+        if previous is not None:
+            weather_window = torch.cat((weather_window,previous),dim=1)
+        else:
+            weather_window = torch.cat((weather_window,torch.zeros(split_x.shape).to(device)),dim=1)
+
+        weather_window = torch.cat((weather_window,split_x),dim=1).to(device)
+        try:
+            in_advance = splits[i+1]
+            weather_window = torch.cat((weather_window,in_advance),dim=1).to(device)
+        except IndexError:
+            weather_window = torch.cat((weather_window,torch.zeros(split_x.shape).to(device)),dim=1).to(device)
+
+
+
+
+        # create the past output window
         past_window = torch.tensor([])
         def reshape(x):
             return x.view(x.size(0), -1)
-        if third_to_last is not None:
-            past_window = torch.cat((past_window,reshape(third_to_last)),dim=1)
+        if len(past_out) >= 5:
+            fourth_to_last = past_out[-4]
+            past_window = torch.cat((past_window.to(device),reshape(fourth_to_last.to(device))),dim=1)
         else:
-            past_window = torch.cat((past_window,reshape(torch.zeros([1,1,12]))),dim =1)
-        if second_to_last is not None:
-            past_window = torch.cat((past_window,reshape(second_to_last)),dim=1)
+            past_window = torch.cat((past_window.to(device),reshape(torch.zeros([1,1,12]).to(device))),dim=1)
+        if len(past_out) >= 4:
+            third_to_last = past_out[-3]
+            past_window = torch.cat((past_window.to(device),reshape(third_to_last.to(device))),dim=1)
         else:
-            past_window = torch.cat((past_window,reshape(torch.zeros([1,1,12]))),dim =1)
-        if past_out is not None:
-            past_window = torch.cat((past_window,reshape(past_out)),dim =1)
+            past_window = torch.cat((past_window.to(device),reshape(torch.zeros([1,1,12]).to(device))),dim =1)
+        if len(past_out) >= 3:
+            second_to_last = past_out[-2]
+            past_window = torch.cat((past_window.to(device),reshape(second_to_last).to(device)),dim=1)
         else:
-            past_window = torch.cat((past_window,reshape(torch.zeros([1,1,12]))),dim =1)
+            past_window = torch.cat((past_window.to(device),reshape(torch.zeros([1,1,12])).to(device)),dim =1)
+        if len(past_out) >= 2:
+            latest_out = past_out[-1]
+            past_window = torch.cat((past_window.to(device),reshape(latest_out).to(device)),dim =1)
+        else:
+            past_window = torch.cat((past_window.to(device),reshape(torch.zeros([1,1,12]).to(device))),dim =1)
 
-        output_tensor_inner = model(input)
-        past_out.append(output_tensor)
+
+
+        # reshaped inputs to flatten around the sequence dimension => so concat sequences
+        flattened_data = weather_window.view(weather_window.size(0), -1).to(device)
+
+        output_tensor_inner = model(flattened_data,past_window.to(device))
+        past_out.append(output_tensor_inner)
         output_tensor = torch.cat((output_tensor,output_tensor_inner),dim=0)
   
     # applying rolling mean to nn output to smooth the curve
@@ -320,7 +371,7 @@ def inference_lstm(date:str,default_date:str):
 # once the model works, i will add a real and abstraced version of a inference function/ class that can be used to acutally run the model and execute predictions once the model has the required accuracy
 if __name__ == "__main__":
     dotenv.load_dotenv()
-    default_date = "2024-06-05"
+    default_date = "2024-09-12"
     print(f"Please provide a date in the following format: YYYY-MM-DD, Default is {default_date}")
     date = input()
     inference_lstm(date,default_date)
