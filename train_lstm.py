@@ -6,8 +6,6 @@ import numpy as np
 from model import LstmModel
 from torch import nn
 import torch.multiprocessing as mp
-import queue
-import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader,Dataset
 
 # custom class to be able to create a pytorch datatset from the provided list of datat
@@ -82,6 +80,7 @@ def train_lstm_new(model:LstmModel,device, data:list[DataframeWithWeatherAsDict]
                     weather_window = torch.cat((weather_window,torch.zeros(split_x.shape)),dim=1)
                 weather_window = torch.cat((weather_window,split_x),dim=1)
 
+                # going one hour in advance to give the model the ability to think ahead
                 try:
                     in_advance = splits[i+1].to(device)
                     weather_window = torch.cat((weather_window.to(device),in_advance.to(device)),dim=1)
@@ -125,16 +124,20 @@ def train_lstm_new(model:LstmModel,device, data:list[DataframeWithWeatherAsDict]
 
                 out = model(flattened_data.to(device),past_window.to(device))
 
+                # calculate the loss
                 loss = criterion(out,split_y.to(device).view(x.size(0),-1))
                 loss.backward()
 
                 optimizer.step()
+
+                # accumulate the loss for tthe day
                 day_loss += loss.item()
 
                 # we only want the model to take account he actual day it is processing
                 model.reset_lstm_state()
             epoch_loss += day_loss / 24
 
+        # test evaluation
         with torch.no_grad():
             for x,y in dataset_test:
                 splits = torch.split(x,split_size_or_sections=1,dim=1)
@@ -230,124 +233,38 @@ def train_lstm_new(model:LstmModel,device, data:list[DataframeWithWeatherAsDict]
     torch.save(model.state_dict(), f"models/lstm_new_{name}.pth")
 
     
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def train_lstm(model:LstmModel,device, data:list[DataframeWithWeatherAsDict],name:str,queue,epochs=100,lr=0.0001):
-    train_size = int(0.9* len(data))
-    train_set = data[:train_size]
-    test_set = data[train_size:]
-
-    train_data_batching_ready = [(day.weather_to_feature_vec(),day.to_lable_normalized_smoothed_and_hours_accurate()) for day in train_set]
-    dataset = batch_data(train_data_batching_ready,10)
-    test_data_batching_ready = [(day.weather_to_feature_vec(),day.to_lable_normalized_smoothed_and_hours_accurate()) for day in test_set]
-    dataset_test = batch_data(test_data_batching_ready,1)
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.MSELoss()
-    
-
-    print(f"Starting Training {name} ")
-    loss_values = []
-    test_loss_values = []
-    last_test_loss = 0
-    no_improvement = 0
-    for epoch in range(epochs):
-        epoch_loss = 0.0
-        epoch_test_loss = 0.0
-        model.train()
-        for ( x,y) in dataset:
-            out = model(x.to(device))
-            loss = criterion(out,y.to(device))
-            loss.backward()
-
-            optimizer.step()
-            epoch_loss += loss.item()
-
-        with torch.no_grad():
-            for (x,y) in dataset_test:
-                out = model(x.to(device))
-                loss = criterion(out,y.to(device))
-                epoch_test_loss += loss.item()
-        train_loss_percent = np.sqrt(epoch_loss/len(dataset))*100
-        test_loss_percent = np.sqrt(epoch_test_loss/len(dataset_test))*100
-        if test_loss_percent > last_test_loss and  last_test_loss != 0 or test_loss_percent == last_test_loss:
-            no_improvement += 1
-        if no_improvement > 20:
-            break
-        last_test_loss = test_loss_percent
-        test_loss_values.append(test_loss_percent)
-        loss_values.append(train_loss_percent)
-
-
-        print(f'{name} Epoch [{epoch+1}/{epochs}], Train Loss: {np.round(train_loss_percent,2)}% ,Test Loss: {np.round(test_loss_percent,2)}%')
-    print(f"done with training {name}")
-    torch.save(model.state_dict(), f"models/lstm_{name}.pth")
-    queue.put((name,loss_values,test_loss_values))
-
 if __name__ == "__main__":
+    # create the cuda device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # load env vars
     dotenv.load_dotenv()
+
+    # load the data
     data = Dataloader("/data",Coordinates(float(os.environ["Lat"]),float(os.environ["Long"]))).load()
 
+    # split the data by seasons
     seasonal_data = split_dfs_by_season(data)
-    seasonal_data.normalize_seasons()
-    print("winter dataset length: ",len(seasonal_data.winter))
-    print("summer dataset length:",len(seasonal_data.summer))
-    print("spring dataset length:",len(seasonal_data.spring))
-    print("autumn dataset length:",len(seasonal_data.autumn))
 
+    # normalize the data 
+    seasonal_data.normalize_seasons()
     seasonal_data_list = [(seasonal_data.summer,"summer"),(seasonal_data.winter,"winter"),(seasonal_data.spring,"spring"),(seasonal_data.autumn,"autumn")]
 
+    
     mp.set_start_method('spawn')
     processes = []
-    res_queue = mp.Queue()
 
+    # spawn mulitple processes to train the models in parallel ( so each season )
     for season in seasonal_data_list:
         model = LstmModel()
         model.to(device)
-        p = mp.Process(target=train_lstm, args=(model,device,season[0],season[1],res_queue,2000,0.0001))
+        p = mp.Process(target=train_lstm_new, args=(model,device,season[0],season[1],10000,0.0001))
         p.start()
         processes.append(p)
 
     for p in processes:
         p.join()
 
-    results = []
-    while not res_queue.empty():
-        try:
-            results.append(res_queue.get())
-        except queue.Empty:
-            break
-    print("collected results")
-    fig, axes = plt.subplots(2, 2, figsize=(10, 8))  # 2 rows, 2 columns
-    for (ax,data) in zip(axes.flat,results):
-        ax.plot(data[1], label='Train Loss')
-        ax.plot(data[2], label='Test Loss')
-        ax.set_title(f'{data[0]}')
-        ax.set_xlabel('Epoch')
-        ax.set_ylabel('Loss %')
-        ax.legend()
 
-    plt.tight_layout()
-    plt.show()
 
 

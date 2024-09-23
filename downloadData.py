@@ -8,7 +8,10 @@ from customTypes import DocumentDesciption;
 
 
     
-
+# this class used to login to the senec dashboard and
+# then download all the data collected by the solar system
+# before running this you should have created a .env file with the 
+# required variables and created a data directory for the data to download
 class ObtainData():
     def __init__(self,email:str,password:str):
         self.email =email

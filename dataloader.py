@@ -8,7 +8,7 @@ from datetime import datetime
 import numpy as np
 import torch;
 from torch import Tensor;
-from customTypes import MinMaxSeasons, MinMaxWeather, WeatherData;
+from customTypes import MinMaxSeasons, MinMaxWeather
 import dotenv;
 def min_max_normalize(values:list[float],max:float,min:float):
     return [0 if x is None else (x - min) / (max-min) for x in values]
@@ -32,13 +32,11 @@ class SenecExportType():
 
 
 @dataclass
-class DataframeWithWeather():
-    df: pl.DataFrame
-    weather: WeatherData
-@dataclass
 class DataframeWithWeatherAsDict():
     df: pl.DataFrame
     weather: dict
+    # create the feature vec for the weather, adding day of season
+    # this outputs the shape of [24,13]
     def weather_to_feature_vec(self)->Tensor:
         weather_dict = []
 
@@ -102,6 +100,7 @@ class DataframeWithWeatherAsDict():
         return torch.Tensor(weather_dict)
 
    
+    # one of the earlier label creation functions
     def df_to_lable_normalized(self)-> Tensor:
         # using the smoothed curve. since the model most likely wont be able to infer minutly changes based on hourly weather data
         values = self.df.get_column("Stromerzeugung smoothed")
@@ -114,6 +113,7 @@ class DataframeWithWeatherAsDict():
             tensor_interpolated = new_tensor.squeeze(0).squeeze(0)
             return tensor_interpolated
         return tensor
+
     def df_to_lable(self)-> Tensor:
         values = self.df.get_column("Stromerzeugung [kW]")
 
@@ -125,7 +125,7 @@ class DataframeWithWeatherAsDict():
             tensor_interpolated = new_tensor.squeeze(0).squeeze(0)
             return tensor_interpolated
         return tensor
-
+    # this was used for the comparison model
     def to_lable_normalized_and_smoothed(self)-> Tensor:
         values = self.df.get_column("Stromerzeugung Normalized smoothed")
 
@@ -138,6 +138,8 @@ class DataframeWithWeatherAsDict():
             return tensor_interpolated
 
         return tensor
+    # this is just a further development of the other hours_accurate function 
+    # it also inlucedes the normalization function
     def to_lable_normalized_smoothed_and_hours_accurate(self)-> Tensor:
         df = self.df 
         df = df.with_columns(
@@ -173,6 +175,7 @@ class DataframeWithWeatherAsDict():
         
     # this is used for the lstm. the lables actually match the lables to the input data. since the 5 time windows might shift and at one point
     # you might start in the middle of a hour instead of the start this will most likely affect the model ability to predict the output
+    # therefore you make sure the hours match
     def to_lable_normalized_hours_accurate(self)-> Tensor:
         df = self.df
         df = df.with_columns(
@@ -221,7 +224,7 @@ class DataframesWithWeatherSortedBySeason():
                 for date in combined_df.select(pl.col("Date")).unique().to_series()
             ]
             df_finished:list[DataframeWithWeatherAsDict] = []
-            # as inefficient as it gets
+            # quite inefficient
             for df in split_dfs:
                 for weather in list_weather:
                     if str(df.get_column("Date")[0]) == weather["daily"]["time"][0]:
@@ -230,6 +233,7 @@ class DataframesWithWeatherSortedBySeason():
             for df in df_finished:
                 df.smooth_graph()
             return df_finished,max_value
+        # the main normalization operation
         def normalize_weather_data(input)->MinMaxSeasons:
 
             def compute_min_max_feature(values)->tuple[float,float]:
@@ -374,6 +378,10 @@ class Dataloader():
             df = pl.DataFrame(day.df)
             data_types.append(DataframeWithWeatherAsDict(df,day.weather))
         return data_types
+
+    # main function of the dataloader
+    # read all the csv files. does some of the processing
+    # also combines the yield values with the weather data for that date
     def read_csv(self,file_name:str)-> tuple[list[DataframeWithWeatherAsDict]|None,Exception|None]:
         df = pl.read_csv(file_name,separator=";",ignore_errors=True)
         df = df.with_columns(
@@ -405,6 +413,7 @@ class Dataloader():
                 continue
             if weather == None:
                 continue
+            # we smooth the graph / calculate the rolling mean to match time timesteps from input to output data
             df_smoothed = self.smooth_graph(df)
             sanitized_dfs.append(DataframeWithWeatherAsDict(df=df_smoothed,weather=weather))
         return (sanitized_dfs,None)
@@ -452,74 +461,6 @@ class Dataloader():
         if resp.status_code != 200:
             return (None,Exception(f"Failed to get weather data for window {date_start}-{date_end}, error: {resp.status_code}"))
         return (resp.json(),None)
-
-
-    def visualize(self):
-
-        def read_csv_and_display_daily_data(file_name : str):
-            df = pl.read_csv(file_name,separator=";",ignore_errors=True)
-            df = df.with_columns(
-                    pl.col(col).str.replace(",", ".").cast(pl.Float64) for col in df.columns[1:] 
-            )
-            
-            df = df.with_columns(
-                pl.col("Uhrzeit").str.to_datetime().alias("Timestamp")
-            )
-
-            df = df.with_columns(
-                pl.col("Timestamp").dt.date().alias("Date")
-            )
-            df = df.with_columns(
-                (pl.col("Stromerzeugung [kW]") * 0.0833).alias("Energy [kWh]")
-            )   
-
-            dfs_per_day = [df.filter(pl.col("Date") == date) for date in df.select(pl.col("Date")).unique().to_series()]
-            sanitized_dfs:list[DataframeWithWeatherAsDict] = []
-            for df in dfs_per_day:
-                if len(df.rows()) < 270:
-                    continue
-                date = df.get_column("Date")[0]
-                (weather,err) = self.get_weather_for_date(date,date)
-                if err != None:
-                    print(err)
-                if weather == None:
-                    print("weather is none")
-                    continue
-                sanitized_dfs.append(DataframeWithWeatherAsDict(df=df,weather=weather))
-
-            example_date_df = sanitized_dfs[6]
-            example_date_df.df.select("Stromerzeugung [kW]")
-            
-            df_smoothed = self.smooth_graph(example_date_df.df)
-            
-            df_pandas = example_date_df.df.to_pandas()
-            plt.figure(figsize=(5, 3))
-            plt.subplot(2, 1, 1)
-            plt.scatter(df_pandas['Timestamp'], df_pandas['Stromerzeugung [kW]'], color='blue')
-            plt.xlabel('Time')
-            plt.ylabel('Electricity Production [kW]')
-            plt.title('Electricity Production Over Time (Original)')
-            plt.grid(True)
-            plt.xticks(rotation=45)
-
-            plt.subplot(2,1,2)
-            df_smoothed_pandas = df_smoothed.to_pandas()
-            plt.scatter(df_smoothed_pandas['Timestamp'], df_smoothed_pandas['Stromerzeugung smoothed'], color='red')
-            plt.xlabel('Time')
-            plt.ylabel('Electricity Production [kW]')
-            plt.title('Electricity Production Over Time (Smoothed)')
-            plt.grid(True)
-
-
-
-            plt.tight_layout()
-            plt.show()  
-            
-
-
-        csv_files = self.get_data_files()
-        read_csv_and_display_daily_data(csv_files[8])
-        
 
 if __name__ == "__main__":
     dotenv.load_dotenv()
