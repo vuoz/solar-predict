@@ -4,7 +4,7 @@ This was part of the submission for the team "solar-predict" in the bw-ki contes
 Username: zxp
 
 Check out the branch containing the submission:
-[submission branch](/vuoz/solar-predict/tree/submission)
+[submission branch](/tree/submission)
 
 
 
