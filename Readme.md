@@ -1,3 +1,14 @@
+
+## Info
+This was part of the submission for the team "solar-predict" in the bw-ki contest 2024
+Username: zxp
+
+Check out the branch containing the submission:
+[submission branch](/vuoz/solar-predict/tree/submission)
+
+
+
+
 ### Env File Structure
 ```
 Long=
@@ -27,7 +38,4 @@ python train_mlp.py # For the mlp based model
 python inference.py
 ```
 
-### Info
-This was part of the submission for the team "solar-predict" in the bw-ki contest 2024
-Username: zxp
 
