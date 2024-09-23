@@ -3,5 +3,4 @@
 .env
 __pycache__
 training_data.pkl
-images
 /models

@@ -40,7 +40,7 @@ that outperformed most other models until the end.
 In this picture you can see the performance of the mlp based model in it's early stages
 
 MLP performance early stages ( after normalization etc. )
-![alt text](./images/mlp-performance-on-day-not-seen.png "MLP performance" )
+![unseen mlp](./images/mlp-performance-on-day-not-seen.png "MLP performance" )
 
 
 It seems that the biggest contribututing factor was not the model architecture, though that improved   
@@ -49,10 +49,10 @@ One of the biggest improvemenst could be recognized after normalizing the data (
 and adding more solar irradiance values. These seem to be big contributure to solar yield.
 
 Loss progression before normalizing ( MLP )
-![alt text](./images/weight-decay-smoothed-500-epochs.png "Image")
+![MLP](./images/weight-decay-smoothed-500-epochs.png "Image")
 
 Loss progression after normalization
-![alt text](./images/loss-progress-normalized.png "Image")
+![MLP Normalized](./images/loss-progress-normalized.png "Image")
 
 One model architecture I tried that might be of interest to you is the transformer based model.   
 Suprisingly the Transformer model seemed to paltaue at 17% loss for both test and training.
