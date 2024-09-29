@@ -1,6 +1,7 @@
 
 ## Info
-This was part of the submission for the team "solar-predict" in the bw-ki contest 2024
+This was part of the submission for the *team "solar-predict" in the bw-ki contest 2024   
+*Though the team consisted only of 1 member   
 Username: zxp
 
 Check out the branch containing the submission:

@@ -1,5 +1,5 @@
 import polars
-from customTypes import MinMaxWeather, WeatherData
+from customTypes import MinMaxWeather
 from model import Model,LstmModel
 import torch
 import requests
