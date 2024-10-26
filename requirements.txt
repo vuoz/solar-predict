@@ -1,0 +1,9 @@
+torch
+torchvision
+torchaudio
+python-dotenv
+requests
+pandas
+polars
+matplotlib
+dill
