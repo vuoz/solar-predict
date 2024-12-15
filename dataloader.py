@@ -7,7 +7,8 @@ from dataclasses import dataclass;
 from datetime import datetime
 import numpy as np
 import torch;
-from torch import Tensor;
+from torch import Tensor
+from torch._prims_common import dtype_or_default;
 from customTypes import MinMaxSeasons, MinMaxWeather, WeatherData;
 import dotenv;
 def min_max_normalize(values:list[float],max:float,min:float):
@@ -375,21 +376,64 @@ class Dataloader():
             data_types.append(DataframeWithWeatherAsDict(df,day.weather))
         return data_types
     def read_csv(self,file_name:str)-> tuple[list[DataframeWithWeatherAsDict]|None,Exception|None]:
-        df = pl.read_csv(file_name,separator=";",ignore_errors=True)
-        df = df.with_columns(
-                pl.col(col).str.replace(",", ".").cast(pl.Float64) for col in df.columns[1:] 
-        )
-        df = df.with_columns(
-            pl.col("Uhrzeit").str.to_datetime().alias("Timestamp")
+        main_df = pl.read_csv(
+            file_name,
+            separator=";",
+            ignore_errors=True,  # Continue reading even if some rows have issues
+            # Optionally, you can set 'has_header=True' if your CSV has a header row
+            has_header=True
         )
 
-        df = df.with_columns(
+        # Step 2: Convert all relevant columns to strings to handle comma decimal separators
+        # Exclude 'Uhrzeit' as it will be parsed separately
+        columns_to_convert = [
+            "Netzbezug [kW]",
+            "Netzeinspeisung [kW]",
+            "Stromverbrauch [kW]",
+            "Akkubeladung [kW]",
+            "Akkuentnahme [kW]",
+            "Stromerzeugung [kW]",
+            "Akku Spannung [V]",
+            "Akku Stromstärke [A]"
+        ]
+
+        missing_columns = set(columns_to_convert) - set(main_df.columns)
+        if missing_columns:
+            raise ValueError(f"The following expected columns are missing in the CSV: {missing_columns}")
+
+        main_df = main_df.with_columns([
+            pl.col(col).cast(pl.Utf8).alias(col) for col in columns_to_convert
+        ])
+
+        main_df = main_df.with_columns([
+            pl.col(col)
+              .str.replace(",", ".")
+              .str.replace(" ", "")  
+              .cast(pl.Float64)
+              .alias(col)
+            for col in columns_to_convert
+        ])
+
+        main_df = main_df.with_columns(
+            pl.col("Uhrzeit")
+              .str.strptime(pl.Datetime, format="%d.%m.%Y %H:%M:%S")
+              .alias("Timestamp")
+        )
+
+        main_df = main_df.with_columns(
             pl.col("Timestamp").dt.date().alias("Date")
         )
-        df = df.with_columns(
+
+        main_df = main_df.with_columns(
             (pl.col("Stromerzeugung [kW]") * 0.0833).alias("Energy [kWh]")
-        )   
-        dfs_per_day = [df.filter(pl.col("Date") == date) for date in df.select(pl.col("Date")).unique().to_series()]
+        )
+
+        unique_dates = main_df.select(pl.col("Date")).unique().to_series()
+
+        dfs_per_day= [
+            main_df.filter(pl.col("Date") == date)
+            for date in unique_dates
+        ]
         sanitized_dfs:list[DataframeWithWeatherAsDict] = []
         for df in dfs_per_day:
             #one day should ideally have 288 data points.

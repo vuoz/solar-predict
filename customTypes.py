@@ -2,9 +2,6 @@ from dataclasses import dataclass
 from typing import List
 from collections import namedtuple
 
-from torch import Tensor
-import torch
-
 def customWeatherDecoder(weatherDict):
     return namedtuple('X', weatherDict.keys())(*weatherDict.values())
 
