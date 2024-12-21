@@ -227,27 +227,10 @@ def train_lstm_new(model:LstmModel,device, data:list[DataframeWithWeatherAsDict]
 
         epoch_loss = np.sqrt(epoch_loss/len(dataset))*100
         print(f'{name} Epoch [{epoch+1}/{epochs}], Loss: {np.round(epoch_loss,2)}%, Test Loss {np.round(test_loss,2)}%')
-    torch.save(model.state_dict(), f"models/model_{name}.pt")
-
-    
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    scripted_model = torch.jit.script(model)
+    torch.jit.save(scripted_model,f"models/{name}.pt")
 
 
 

@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch
+from torch.types import Tensor
 
 
 # very basic model used to comparison
@@ -47,10 +48,10 @@ class LstmModel(nn.Module):
             nn.ReLU()
         )
         return
-    def forward(self,weather_inputs,last_yield):
-        lstm_out,self.hidden = self.lstm_1(weather_inputs)
+    def forward(self,weather_inputs:torch.Tensor,last_yield:torch.Tensor):
+        lstm_out,_ = self.lstm_1(weather_inputs)
         concat = torch.cat((lstm_out,last_yield),dim=1)
-        lstm_out, self.hidden_2 = self.lstm_2(concat)
+        lstm_out, _ = self.lstm_2(concat)
         return self.seq(lstm_out)
     def reset_lstm_state(self):
         self.hidden =None
