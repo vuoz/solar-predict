@@ -77,6 +77,9 @@ class ObtainData():
                 continue
             if contents == None:
                 continue
+            if not os.path.exists(os.path.join(os.getcwd(), 'data', "")):
+                os.makedirs(os.path.join(os.getcwd(), 'data', ""))
+
             file = open(f"data/solar_data_kw_{kw}_jahr_{year}.csv","w")
             file.write(contents)
             file.flush()
